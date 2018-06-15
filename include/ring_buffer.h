@@ -35,6 +35,16 @@ public:
         return ring_[(start + index) % N];
     }
 
+    std::vector<T> toVector()
+    {
+        std::vector<T> vec(GetSize());
+        for (int i = 0; i < vec.size(); ++i) {
+            vec[i] = this->operator[](i);
+        }
+
+        return vec;
+    }
+
 private:
     std::vector<T> ring_;
     int end_;

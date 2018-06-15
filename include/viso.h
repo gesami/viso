@@ -2,11 +2,11 @@
 #ifndef VISO_VISO_H
 #define VISO_VISO_H
 
+#include "bundle_adjuster.h"
 #include "frame_sequence.h"
 #include "keyframe.h"
 #include "map.h"
 #include "ring_buffer.h"
-#include "bundle_adjuster.h"
 #include <sophus/se3.hpp>
 #include <tuple>
 
@@ -55,7 +55,7 @@ public:
         state_ = kInitialization;
     }
 
-    std::vector<Sophus::SE3d> poses;
+    RingBuffer<10, Sophus::SE3d> poses;
     std::vector<Sophus::SE3d> poses_opt;
     std::vector<V3d> points_opt;
 
@@ -91,16 +91,16 @@ private:
         const M3d& R, V3d& T, std::vector<bool>& inliers, int& nr_inliers, std::vector<V3d>& points3d);
 
     void SelectMotion(const std::vector<V3d>& p1,
-                      const std::vector<V3d>& p2,
-                      const std::vector<M3d>& rotations,
-                      const std::vector<V3d>& translations,
-                      M3d& R_out,
-                      V3d& T_out,
-                      std::vector<bool>& inliers,
-                      int& nr_inliers,
-                      std::vector<V3d>& points3d);
-    
-    void RecoverPoseHomography(const cv::Mat &H, M3d &R, V3d &T);
+        const std::vector<V3d>& p2,
+        const std::vector<M3d>& rotations,
+        const std::vector<V3d>& translations,
+        M3d& R_out,
+        V3d& T_out,
+        std::vector<bool>& inliers,
+        int& nr_inliers,
+        std::vector<V3d>& points3d);
+
+    void RecoverPoseHomography(const cv::Mat& H, M3d& R, V3d& T);
 
     void OpticalFlowSingleLevel(
         const cv::Mat& img1,
@@ -128,9 +128,9 @@ private:
         V2d uv_cur;
     };
 
-    void LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before, std::vector<V2d>& kp_after);
+    void LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before, std::vector<V2d>& kp_after, std::vector<int>& tracked_points);
     void LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool>& success, std::vector<V2d>& kp, int level);
-    void BA();
+    void BA(bool map_only, Keyframe::Ptr current_frame, const std::vector<V2d>&  kp, const std::vector<int>& tracked_points);
 };
 
 #endif

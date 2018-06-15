@@ -29,6 +29,7 @@ public:
     }
 
     inline V3d GetWorldPos() { return Pw_; }
+    inline void SetWorldPos(V3d pos) { Pw_ = pos; }
 private:
     V3d Pw_;
     std::vector<std::pair<Keyframe::Ptr, int> > observations_;

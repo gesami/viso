@@ -102,6 +102,7 @@ public:
 
     inline const cv::Mat& Mat() { return mat_; }
     inline Sophus::SE3d GetPose() { return Sophus::SE3d(R_, T_);}
+    inline Sophus::SE3d SetPose(Sophus::SE3d pose) { R_ = pose.rotationMatrix(); T_ = pose.translation(); }
     inline M3d GetR() { return R_; }
     inline V3d GetT() { return T_; }
     inline void SetT(V3d T) { T_ = T; }
