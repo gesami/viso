@@ -6,7 +6,9 @@
 #include "keyframe.h"
 #include "map.h"
 #include "ring_buffer.h"
+#include "bundle_adjuster.h"
 #include <sophus/se3.hpp>
+#include <tuple>
 
 class Viso : public FrameSequence::FrameHandler {
 private:
@@ -24,11 +26,12 @@ private:
     const double disparity_squared_thresh = 15 * 15; // squared, 15 pixels
     const double half_patch_size = 4;
     const double photometric_error_thresh = (half_patch_size * 2) * (half_patch_size * 2) * 15 * 15; // squared error for the whole patch, 15 gray values per pixel
+    const int BA_iteration = 100;
 
     M3d K;
     M3d K_inv;
 
-    Keyframe::Ptr last_frame;
+    //Keyframe::Ptr last_frame;
 
     struct Initialization {
         Keyframe::Ptr ref_frame;
@@ -52,6 +55,8 @@ public:
     }
 
     std::vector<Sophus::SE3d> poses;
+    std::vector<Sophus::SE3d> poses_opt;
+    Keyframe::Ptr last_frame;
 
     ~Viso() = default;
 
@@ -122,6 +127,7 @@ private:
 
     void LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before, std::vector<V2d>& kp_after);
     void LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool>& success, std::vector<V2d>& kp, int level);
+    void BA();
 };
 
 #endif
