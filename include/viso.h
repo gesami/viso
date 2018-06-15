@@ -19,14 +19,15 @@ private:
     };
 
     // Some constants.
-    const int reinitialize_after = 10;
-    const int fast_thresh = 50;
-    const double projection_error_thresh = .3;
+    const int min_inlier_cnt = 100;
+    const int reinitialize_after = 20;
+    const int fast_thresh = 40;
+    const double projection_error_thresh = 0.3;
     const double parallax_thresh = 1;
-    const double disparity_squared_thresh = 15 * 15; // squared, 15 pixels
+    const double disparity_squared_thresh = 30 * 30; // squared, 15 pixels
     const double half_patch_size = 4;
-    const double photometric_error_thresh = (half_patch_size * 2) * (half_patch_size * 2) * 15 * 15; // squared error for the whole patch, 15 gray values per pixel
-    const int BA_iteration = 100;
+    const double photometric_error_thresh = (half_patch_size * 2) * (half_patch_size * 2) * 25 * 25; // squared error for the whole patch, 15 gray values per pixel
+    const int BA_iteration = 1000;
 
     M3d K;
     M3d K_inv;
@@ -56,6 +57,8 @@ public:
 
     std::vector<Sophus::SE3d> poses;
     std::vector<Sophus::SE3d> poses_opt;
+    std::vector<V3d> points_opt;
+
     Keyframe::Ptr last_frame;
 
     ~Viso() = default;

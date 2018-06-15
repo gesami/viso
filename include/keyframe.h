@@ -6,6 +6,7 @@
 #include "types.h"
 #include <memory>
 #include <opencv2/opencv.hpp>
+#include <sophus/se3.hpp>
 
 class Keyframe {
 private:
@@ -100,6 +101,7 @@ public:
     inline std::vector<cv::KeyPoint>& Keypoints() { return keypoints_; }
 
     inline const cv::Mat& Mat() { return mat_; }
+    inline Sophus::SE3d GetPose() { return Sophus::SE3d(R_, T_);}
     inline M3d GetR() { return R_; }
     inline V3d GetT() { return T_; }
     inline void SetT(V3d T) { T_ = T; }

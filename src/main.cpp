@@ -12,7 +12,7 @@ struct PangoState {
     pangolin::View d_cam;
 };
 
-void DrawMap(PangoState* pango, std::vector<V3d> points, const std::vector<Sophus::SE3d>& poses, const std::vector<Sophus::SE3d>& poses_opt);
+void DrawMap(PangoState* pango, std::vector<V3d> points,std::vector<V3d> points_opt, const std::vector<Sophus::SE3d>& poses, const std::vector<Sophus::SE3d>& poses_opt);
 
 const double fx = 517.3;
 const double fy = 516.5;
@@ -79,7 +79,7 @@ int main(int argc, char const* argv[])
 
     while (!pangolin::ShouldQuit()) {
         sequence.RunOnce();
-        DrawMap(&pango_state, viso.GetPoints(), viso.poses, viso.poses_opt);
+        DrawMap(&pango_state, viso.GetPoints(), viso.points_opt, viso.poses, viso.poses_opt);
         Eigen::Quaternion<double> q(viso.last_frame->GetR());
         V3d t(viso.last_frame->GetT());
         q.normalize();
@@ -93,13 +93,21 @@ int main(int argc, char const* argv[])
     return 0;
 }
 
-void DrawMap(PangoState* pango, std::vector<V3d> points, const std::vector<Sophus::SE3d>& poses, const std::vector<Sophus::SE3d>& poses_opt)
+void DrawMap(PangoState* pango, std::vector<V3d> points, std::vector<V3d> points_opt, const std::vector<Sophus::SE3d>& poses, const std::vector<Sophus::SE3d>& poses_opt)
 {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     pango->d_cam.Activate(pango->s_cam);
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
     // points
+    glPointSize(2);
+    glBegin(GL_POINTS);
+    for (size_t i = 0; i < points_opt.size(); i++) {
+        glColor3f(0.0, 1.0, 0.0);
+        glVertex3d(points_opt[i].x(), points_opt[i].y(), points_opt[i].z());
+    }
+    glEnd();
+
     glPointSize(2);
     glBegin(GL_POINTS);
     for (size_t i = 0; i < points.size(); i++) {
@@ -111,7 +119,7 @@ void DrawMap(PangoState* pango, std::vector<V3d> points, const std::vector<Sophu
     // draw poses
     float sz = 0.1;
     int width = 640, height = 480;
-        
+       
     for (auto &Tcw: poses)
     {
       glPushMatrix();
@@ -139,34 +147,35 @@ void DrawMap(PangoState* pango, std::vector<V3d> points, const std::vector<Sophu
       glEnd();
       glPopMatrix();
     }
-    for (auto pose : poses_opt) {
-        glPushMatrix();
 
-        double f = 500;
-
-        Sophus::Matrix4f m = pose.inverse().matrix().cast<float>();
-        glMultMatrixf((GLfloat*)m.data());
-        glColor3f(0, 1, 0);
-        glLineWidth(2);
-        glBegin(GL_LINES);
-        glVertex3f(0, 0, 0);
-        glVertex3f(sz * (0 - 0) / f, sz * (0 - 0) / f, sz);
-        glVertex3f(0, 0, 0);
-        glVertex3f(sz * (0 - 0) / f, sz * (height - 1 - 0) / f, sz);
-        glVertex3f(0, 0, 0);
-        glVertex3f(sz * (width - 1 - 0) / f, sz * (height - 1 - 0) / f, sz);
-        glVertex3f(0, 0, 0);
-        glVertex3f(sz * (width - 1 - 0) / f, sz * (0 - 0) / f, sz);
-        glVertex3f(sz * (width - 1 - 0) / f, sz * (0 - 0) / f, sz);
-        glVertex3f(sz * (width - 1 - 0) / f, sz * (height - 1 - 0) / f, sz);
-        glVertex3f(sz * (width - 1 - 0) / f, sz * (height - 1 - 0) / f, sz);
-        glVertex3f(sz * (0 - 0) / f, sz * (height - 1 - 0) / f, sz);
-        glVertex3f(sz * (0 - 0) / f, sz * (height - 1 - 0) / f, sz);
-        glVertex3f(sz * (0 - 0) / f, sz * (0 - 0) / f, sz);
-        glVertex3f(sz * (0 - 0) / f, sz * (0 - 0) / f, sz);
-        glVertex3f(sz * (width - 1 - 0) / f, sz * (0 - 0) / f, sz);
-        glEnd();
-        glPopMatrix();
+ 
+    for (auto &Tcw: poses_opt)
+    {
+      glPushMatrix();
+      Sophus::Matrix4f m = Tcw.inverse().matrix().cast<float>();
+      glMultMatrixf((GLfloat *) m.data());
+      glColor3f(0, 1, 0);
+      glLineWidth(2);
+      glBegin(GL_LINES);
+      glVertex3f(0, 0, 0);
+      glVertex3f(sz * (0 - cx) / fx, sz * (0 - cy) / fy, sz);
+      glVertex3f(0, 0, 0);
+      glVertex3f(sz * (0 - cx) / fx, sz * (height - 1 - cy) / fy, sz);
+      glVertex3f(0, 0, 0);
+      glVertex3f(sz * (width - 1 - cx) / fx, sz * (height - 1 - cy) / fy, sz);
+      glVertex3f(0, 0, 0);
+      glVertex3f(sz * (width - 1 - cx) / fx, sz * (0 - cy) / fy, sz);
+      glVertex3f(sz * (width - 1 - cx) / fx, sz * (0 - cy) / fy, sz);
+      glVertex3f(sz * (width - 1 - cx) / fx, sz * (height - 1 - cy) / fy, sz);
+      glVertex3f(sz * (width - 1 - cx) / fx, sz * (height - 1 - cy) / fy, sz);
+      glVertex3f(sz * (0 - cx) / fx, sz * (height - 1 - cy) / fy, sz);
+      glVertex3f(sz * (0 - cx) / fx, sz * (height - 1 - cy) / fy, sz);
+      glVertex3f(sz * (0 - cx) / fx, sz * (0 - cy) / fy, sz);
+      glVertex3f(sz * (0 - cx) / fx, sz * (0 - cy) / fy, sz);
+      glVertex3f(sz * (width - 1 - cx) / fx, sz * (0 - cy) / fy, sz);
+      glEnd();
+      glPopMatrix();
     }
+
     pangolin::FinishFrame();
 }

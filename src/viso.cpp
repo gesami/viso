@@ -2,8 +2,8 @@
 #include "common.h"
 #include "timer.h"
 
-
 #include <opencv2/core/eigen.hpp>
+#include <map>
 
 void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
 {
@@ -51,7 +51,7 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
             int nr_inliers = 0;
             std::vector<V3d> points3d;
             PoseEstimation2d2d(p1, p2, init_.R, init_.T, init_.success, nr_inliers, points3d);
-            //Reconstruct(p1, p2, init_.R, init_.T, init_.success, nr_inliers, points3d);
+            Reconstruct(p1, p2, init_.R, init_.T, init_.success, nr_inliers, points3d);
 
             // Visualization
             cv::Mat img;
@@ -75,13 +75,17 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
 
             cv::waitKey(10);
             const double thresh = 0.9;
-            if (p1.size() > 50 && nr_inliers > 0 && (nr_inliers / (double)p1.size()) > thresh) {
-                std::cout << "Initialized!\n";
+            if (nr_inliers > min_inlier_cnt) {
+                std::cout << "Initiamin_inlier_cntlized!\n";
                 map_.AddKeyframe(init_.ref_frame);
                 map_.AddKeyframe(cur_frame);
 
                 cur_frame->SetR(init_.R);
                 cur_frame->SetT(init_.T);
+
+                poses.push_back(init_.ref_frame->GetPose());
+                poses.push_back(cur_frame->GetPose());
+
                 int cnt = 0;
                 for (int i = 0; i < p1.size(); ++i) {
                     if (init_.success[i]) {
@@ -104,26 +108,22 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
 
                 std::cout <<  "add " << cnt << "mappoint" << std::endl;
                 Sophus::SE3d X = Sophus::SE3d(cur_frame->GetR(), cur_frame->GetT());
-                poses.push_back(X);
                 BA();
-                state_ = kFinished;
+                state_ = kRunning;
                 std::cout << "start tracking" << std::endl;
 
                 break;
             }
-            else{
-            	poses.push_back(Sophus::SE3d(M3d::Identity(),V3d::Zero()));
-            }
         } else {
             init_.kp1.clear();
             init_.kp2.clear();
-            poses.clear();
             init_.success.clear();
-            cv::FAST(cur_frame->Mat(), init_.kp1, fast_thresh);
+            //cv::FAST(cur_frame->Mat(), init_.kp1, fast_thresh);
+            cv::Ptr<cv::GFTTDetector> detector = cv::GFTTDetector::create(500, 0.01, 10); // maximum 500 keypoints
+            detector->detect(cur_frame->Mat(), init_.kp1);
             init_.kp2 = init_.kp1;
             init_.ref_frame = cur_frame;
             init_.frame_cnt = 0;
-            poses.push_back(Sophus::SE3d(M3d::Identity(),V3d::Zero()));
         }
 
         ++init_.frame_cnt;
@@ -255,8 +255,20 @@ void Viso::PoseEstimation2d2d(std::vector<V3d> p1, std::vector<V3d> p2,
         cv::cv2eigen(T_ess, translations[0]);
     }
 
-#define USE_HOMOGRAPHY
-#ifdef USE_HOMOGRAPHY
+    for(int i = 0; i < p1_.size(); ++i) {
+      if (outlier_mask_essential.at<bool>(i, 1)) {
+        nr_inliers++;
+        inliers.push_back(true);
+      } else {
+        inliers.push_back(false);
+      }
+    }
+
+    R = rotations[0];
+    T = translations[0];
+    
+//#define USE_HOMOGRAPHY
+#if 0
     cv::Mat outlier_mask_homography;
     cv::Mat homography = cv::findHomography(p1_, p2_, CV_RANSAC, thresh, outlier_mask_homography, 2000, 0.99);
 
@@ -273,7 +285,7 @@ void Viso::PoseEstimation2d2d(std::vector<V3d> p1, std::vector<V3d> p2,
     }
 
 #endif
-    SelectMotion(p1, p2, rotations, translations, R, T, inliers, nr_inliers, points3d);
+    //SelectMotion(p1, p2, rotations, translations, R, T, inliers, nr_inliers, points3d);
 }
 
 // TODO: Move this to a separate class.
@@ -384,13 +396,15 @@ void Viso::OpticalFlowMultiLevel(
     const double pyramid_scale = 0.5;
     const double scales[] = { 1.0, 0.5, 0.25, 0.125 };
 
+    const int start = 3;
+
     // Scale the initial guess for kp2.
     for (int j = 0; j < kp2.size(); ++j) {
-        kp2[j].pt *= scales[nr_pyramids - 1];
-        kp2[j].size *= scales[nr_pyramids - 1];
+        kp2[j].pt *= scales[start];
+        kp2[j].size *= scales[start];
     }
 
-    for (int i = nr_pyramids - 1; i >= 0; --i) {
+    for (int i = start; i >= 0; --i) {
         std::vector<cv::KeyPoint> kp1_ = kp1;
 
         for (int j = 0; j < kp1_.size(); ++j) {
@@ -968,7 +982,7 @@ void Viso::BA(){
 	for (size_t i = 0; i < map_.GetPoints().size(); i++, id++) { //for each mappoint
 		MapPoint::Ptr mp = map_.GetPoints()[i];
         //V3d mpxyz = mp->GetWorldPos();
-        VertexSBAPointXYZ* p = new VertexSBAPointXYZ;
+        VertexSBAPointXYZ* p = new VertexSBAPointXYZ();
       	p->setId(id);
       	p->setMarginalized(true);
       	p->setEstimate(mp->GetWorldPos());
@@ -982,16 +996,19 @@ void Viso::BA(){
     }
 
     //std::cout << "pose size: " << poses.size() << std::endl;
-    for (size_t i = 0; i < poses.size(); i++, id++) {
-    	VertexSophus* cam = new VertexSophus;
-    	Sophus::SE3d pose = poses[i];
-    	//std::cout << pose.matrix() << std::endl;
+    std::vector<Keyframe::Ptr> keyframes = map_.Keyframes(); 
+    std::map<int, int> keyframe_indices;
+
+    for (size_t i = 0; i < keyframes.size(); i++, id++) {
+    	VertexSophus* cam = new VertexSophus();
     	cam->setId(id);
     	if(i == 0) cam->setFixed( true ); //fix the pose of the first frame
-      	cam->setEstimate(pose);
-      	optimizer.addVertex(cam);
-      	cameras_v.push_back(cam);
+     	cam->setEstimate(keyframes[i]->GetPose());
+     	optimizer.addVertex(cam);
+     	cameras_v.push_back(cam);
+      keyframe_indices.insert({keyframes[i]->GetId(), i});
     }
+
     //id=0;
     std::cout << "map point size: "<< map_.GetPoints().size()<< std::endl;
     for (size_t i = 0; i < map_.GetPoints().size(); i++) {
@@ -1001,7 +1018,7 @@ void Viso::BA(){
         	std::pair<Keyframe::Ptr, int>  obs = mp->GetObservations()[j];
         	EdgeObservation* e = new EdgeObservation(K);
         	e ->setVertex(0,points_v[i]);
-        	e ->setVertex(1,cameras_v[obs.first->GetId()]);
+        	e ->setVertex(1,cameras_v[keyframe_indices.find(obs.first->GetId())->second]);
         	e->setInformation(Eigen::Matrix2d::Identity()); //intensity is a scale?
         	int idx = obs.second;
         	//std::cout << obs.first->Keypoints()[idx].pt.x << " " << obs.first->Keypoints()[idx].pt.y << std::endl;
@@ -1014,13 +1031,13 @@ void Viso::BA(){
 	}
 
 
-	// perform optimization
+  	// perform optimization
   	std::cout << "optimize!"<< std::endl;
   	optimizer.initializeOptimization(0);
   	optimizer.optimize(BA_iteration);
-	std::cout << "end!"<< std::endl;
+	  std::cout << "end!"<< std::endl;
   	
-  	for ( int i=0; i < poses.size(); i++ )
+  	for ( int i=0; i < keyframes.size(); i++ )
   	{
      	VertexSophus* pose = dynamic_cast<VertexSophus*> (optimizer.vertex(map_.GetPoints().size()+i));
      	Sophus::SE3d p_opt = pose->estimate();
@@ -1030,6 +1047,6 @@ void Viso::BA(){
   	{
      	VertexSBAPointXYZ* point = dynamic_cast<VertexSBAPointXYZ*> (optimizer.vertex(i));
      	V3d point_opt = point->estimate();
-     	map_.GetPoints()[i]->GetWorldPos()=point_opt;
+      points_opt.push_back(point_opt);
   	}
 }
