@@ -25,9 +25,11 @@ private:
     const double projection_error_thresh = 0.3;
     const double parallax_thresh = 1;
     const double disparity_squared_thresh = 30 * 30; // squared, 15 pixels
-    const double half_patch_size = 4;
-    const double photometric_error_thresh = (half_patch_size * 2) * (half_patch_size * 2) * 25 * 25; // squared error for the whole patch, 15 gray values per pixel
+    const double half_patch_size = 10;
+    const double photometric_error_thresh = (half_patch_size * 2) * (half_patch_size * 2) * 15 * 15; // squared error for the whole patch, 15 gray values per pixel
+    const double lk_d2_factor = 1.3 * 1.3; // deviation of median disparity
     const int BA_iteration = 1000;
+    const double ba_outlier_thresh = 1;
 
     M3d K;
     M3d K_inv;

@@ -135,11 +135,14 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
         cv::cvtColor(cur_frame->Mat(), display, CV_GRAY2BGR);
 
         for (int i = 0; i < kp_after.size(); ++i) {
+            int r = (i % 3) == 0;
+            int g = (i % 3) == 1;
+            int b = (i % 3) == 2;
             cv::rectangle(display, cv::Point2f(kp_before[i].x() - 4, kp_before[i].y() - 4), cv::Point2f(kp_before[i].x() + 4, kp_before[i].y() + 4),
-                cv::Scalar(0, 0, 255));
+                cv::Scalar(255 * b, 255 * g, 255 * r));
 
             cv::rectangle(display, cv::Point2f(kp_after[i].x() - 4, kp_after[i].y() - 4), cv::Point2f(kp_after[i].x() + 4, kp_after[i].y() + 4),
-                cv::Scalar(0, 250, 0));
+                cv::Scalar(255 * b, 255 * g, 255 * r));
         }
 
         cv::imshow("Tracked", display);
@@ -537,7 +540,6 @@ void Viso::Reconstruct(const std::vector<V3d>& p1, const std::vector<V3d>& p2,
 
         for (auto& p : points3d) {
             p /= mean_depth;
-            std::cout << p << std::endl;
         }
 
         T /= mean_depth;
@@ -656,7 +658,6 @@ void Viso::SelectMotion(const std::vector<V3d>& p1,
 
         for (auto& p : points3d) {
             p /= mean_depth;
-            std::cout << p << std::endl;
         }
 
         T_out /= mean_depth;
@@ -854,17 +855,42 @@ void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before,
         LKAlignmentSingle(alignment_pairs, success, kp_after, level);
     }
 
+    // reduce tracking outliers
+    std::vector<double> d2;
+    for (int i = 0; i < kp_before.size(); ++i) {
+        if (success[i]) {
+            double dx = kp_after[i].x() - kp_before[i].x();
+            double dy = kp_after[i].y() - kp_before[i].y();
+            d2.push_back(dx * dx + dy * dy);
+        }
+    }
+
+    double median_d2 = CalculateMedian(d2);
+
+    int j = 0;
+    for (int i = 0; i < kp_before.size(); ++i) {
+        if (success[i]) {
+            if (d2[j] > median_d2 * lk_d2_factor) {
+                success[i] = false;
+            }
+            ++j;
+        }
+    }
+
     assert(success.size() == kp_before.size());
 
     int i = 0;
-    auto iter2 = tracked_points.begin();
+    auto iter2 = kp_after.begin();
+    auto iter3 = tracked_points.begin();
     for (auto iter1 = kp_before.begin(); iter1 != kp_before.end(); ++i) {
         if (!success[i]) {
             iter1 = kp_before.erase(iter1);
-            iter2 = tracked_points.erase(iter2);
+            iter2 = kp_after.erase(iter2);
+            iter3 = tracked_points.erase(iter3);
         } else {
             ++iter1;
             ++iter2;
+            ++iter3;
         }
     }
 }
@@ -945,14 +971,14 @@ void Viso::LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool
     }
 
     for (int i = 0; i < pairs.size(); ++i) {
-        if (success[i]) {
-            kp.push_back(pairs[i].uv_cur);
-        }
+        kp.push_back(pairs[i].uv_cur);
     }
 }
 
 void Viso::BA(bool map_only, Keyframe::Ptr current_frame, const std::vector<V2d>& kp, const std::vector<int>& tracked_points)
 {
+    using KernelType = g2o::RobustKernelHuber;
+
     std::cout << "start BA" << std::endl;
     // build optimization problem
     // setup g2o
@@ -1005,7 +1031,6 @@ void Viso::BA(bool map_only, Keyframe::Ptr current_frame, const std::vector<V2d>
         cameras_v[1]->setFixed(true);
     }
 
-    std::cout << "map point size: " << map_.GetPoints().size() << std::endl;
     for (size_t i = 0; i < map_.GetPoints().size(); i++) {
         //std::cout << i << "th mappint" << std::endl;
         MapPoint::Ptr mp = map_.GetPoints()[i];
@@ -1017,9 +1042,11 @@ void Viso::BA(bool map_only, Keyframe::Ptr current_frame, const std::vector<V2d>
             e->setInformation(Eigen::Matrix2d::Identity()); //intensity is a scale?
             int idx = obs.second;
             V2d xy(obs.first->Keypoints()[idx].pt.x, obs.first->Keypoints()[idx].pt.y);
-            std::cout << xy.transpose() << std::endl;
             e->setMeasurement(xy);
             e->setId(id);
+            KernelType* robustKernel = new KernelType();
+            robustKernel->setDelta(ba_outlier_thresh);
+            e->setRobustKernel(robustKernel);
             optimizer.addEdge(e);
         }
 
@@ -1030,6 +1057,9 @@ void Viso::BA(bool map_only, Keyframe::Ptr current_frame, const std::vector<V2d>
             e->setInformation(Eigen::Matrix2d::Identity()); //intensity is a scale?
             e->setMeasurement(kp[tracked_idx]);
             e->setId(id);
+            KernelType* robustKernel = new KernelType();
+            robustKernel->setDelta(ba_outlier_thresh);
+            e->setRobustKernel(robustKernel);
             optimizer.addEdge(e);
 
             ++tracked_idx;
@@ -1061,7 +1091,6 @@ void Viso::BA(bool map_only, Keyframe::Ptr current_frame, const std::vector<V2d>
         VertexSBAPointXYZ* point = dynamic_cast<VertexSBAPointXYZ*>(optimizer.vertex(i));
         V3d point_opt = point->estimate();
         map_.GetPoints()[i]->SetWorldPos(point_opt);
-//        points_opt.push_back(point_opt);
-      std::cout << point_opt << "\n";
+        //        points_opt.push_back(point_opt);
     }
 }

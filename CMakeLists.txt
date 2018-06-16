@@ -20,7 +20,7 @@ include_directories(${Sophus_INCLUDE_DIRS})
 
 # g2o
 cmake_policy(SET CMP0015 NEW) # relative link directories
-link_directories(lib/)  
+link_directories(lib/)
 SET(G2O_LIBS g2o_core g2o_stuff g2o_types_sba)
 
 include_directories(include)

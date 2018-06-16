@@ -58,4 +58,23 @@ inline double GetImageGradientY(const cv::Mat& mat, const double& u, const doubl
     return 0.5 * (GetPixelValue(mat, u, v + 1) - GetPixelValue(mat, u, v - 1));
 }
 
+template <typename T>
+inline T CalculateMedian(std::vector<T> vec)
+{
+    std::size_t size = vec.size();
+    if (size == 0) {
+        return T();
+    }
+    std::sort(vec.begin(), vec.end());
+    T median = T();
+
+    if (size % 2 == 0) {
+        median = (vec[size / 2 - 1] + vec[size / 2]) / 2;
+    } else {
+        median = vec[size / 2];
+    }
+
+    return median;
+}
+
 #endif //FINAL_COMMON_H

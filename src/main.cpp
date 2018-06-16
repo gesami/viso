@@ -84,7 +84,7 @@ int main(int argc, char const* argv[])
         V3d t(viso.last_frame->GetT());
         q.normalize();
         qx=q.x(); qy=q.y(); qz=q.z(); qw=q.w();
-        cout << viso.last_frame->times_<<" "<<t[0]<<" "<<t[1]<<" "<<t[2]<<" "<<qx<<" "<<qy<<" "<<qz<<" "<<qw<<endl;
+        //cout << viso.last_frame->times_<<" "<<t[0]<<" "<<t[1]<<" "<<t[2]<<" "<<qx<<" "<<qy<<" "<<qz<<" "<<qw<<endl;
         out.open(dataset_dir+"/estimation.txt", std::ofstream::out | std::ofstream::app);
         out<<viso.last_frame->times_<<" "<<t[0]<<" "<<t[1]<<" "<<t[2]<<" "<<qx<<" "<<qy<<" "<<qz<<" "<<qw<<endl;
         out.close();
