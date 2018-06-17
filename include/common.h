@@ -34,7 +34,13 @@ inline M3d Hat(V3d v)
 
 inline double GetPixelValue(const cv::Mat& mat, const double& x, const double& y)
 {
-    U8* data = &mat.data[int(y) * mat.step + int(x)];
+    const int y_int = (int)y;
+    const int x_int = (int)x;
+
+    assert(x_int >= 0 && x_int < mat.cols);
+    assert(y_int >= 0 && y_int < mat.rows);
+
+    U8* data = &mat.data[y_int * mat.step + x_int];
     double xx = x - floor(x);
     double yy = y - floor(y);
     return double(

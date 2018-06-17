@@ -209,9 +209,7 @@ void Viso::DirectPoseEstimationSingleLayer(int level,
     Keyframe::Ptr current_frame,
     Sophus::SE3d& T21)
 {
-
-    const double scales[] = { 1, 0.5, 0.25, 0.125 };
-    const double scale = scales[level];
+    const double scale = Keyframe::scales[level];
     const double delta_thresh = 0.005;
 
     // parameters
@@ -365,13 +363,11 @@ void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before,
 
     std::vector<bool> success;
 
-    const int nr_pyramids = 4;
-
     for (int i = 0; i < alignment_pairs.size(); ++i) {
         kp_before.push_back(alignment_pairs[i].uv_cur);
     }
 
-    for (int level = nr_pyramids - 1; level >= 0; --level) {
+    for (int level = Keyframe::nr_pyramids - 1; level >= 0; --level) {
         LKAlignmentSingle(alignment_pairs, success, kp_after, level);
     }
 
@@ -419,8 +415,7 @@ void Viso::LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool
 {
     // parameters
     const bool inverse = true;
-    int iterations = 100;
-    const double scales[4] = { 1.0, 0.5, 0.25, 0.125 };
+    const int iterations = 100;
 
     success.clear();
     kp.clear();
@@ -429,7 +424,6 @@ void Viso::LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool
         AlignmentPair& pair = pairs[i];
 
         double dx = 0, dy = 0; // dx,dy need to be estimated
-
         double cost = 0, lastCost = 0;
         bool succ = true; // indicate if this point succeeded
 
@@ -440,7 +434,7 @@ void Viso::LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool
             cost = 0;
 
             if (
-                !pair.ref_frame->IsInside(pair.uv_ref.x() * scales[level] + dx - lk_half_patch_size, pair.uv_ref.y() * scales[level] + dy - lk_half_patch_size, level) || !pair.ref_frame->IsInside(pair.uv_ref.x() * scales[level] + dx + lk_half_patch_size, pair.uv_ref.y() * scales[level] + dy + lk_half_patch_size, level)) {
+                !pair.ref_frame->IsInside(pair.uv_ref.x() * Keyframe::scales[level] + dx - lk_half_patch_size, pair.uv_ref.y() * Keyframe::scales[level] + dy - lk_half_patch_size, level) || !pair.ref_frame->IsInside(pair.uv_ref.x() * Keyframe::scales[level] + dx + lk_half_patch_size, pair.uv_ref.y() * Keyframe::scales[level] + dy + lk_half_patch_size, level)) {
                 succ = false;
                 break;
             }
@@ -451,11 +445,11 @@ void Viso::LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool
                 for (int y = -lk_half_patch_size; y < lk_half_patch_size; y++) {
                     V2d J;
                     if (!inverse) {
-                        J = -pair.cur_frame->GetGradient(pair.uv_cur.x() * scales[level] + x + dx, pair.uv_cur.y() * scales[level] + y + dy, level);
+                        J = -pair.cur_frame->GetGradient(pair.uv_cur.x() * Keyframe::scales[level] + x + dx, pair.uv_cur.y() * Keyframe::scales[level] + y + dy, level);
                     } else {
-                        J = -pair.ref_frame->GetGradient(pair.uv_ref.x() * scales[level] + x, pair.uv_ref.y() * scales[level] + y, level);
+                        J = -pair.ref_frame->GetGradient(pair.uv_ref.x() * Keyframe::scales[level] + x, pair.uv_ref.y() * Keyframe::scales[level] + y, level);
                     }
-                    error = pair.ref_frame->GetPixelValue(pair.uv_ref.x() * scales[level] + x, pair.uv_ref.y() * scales[level] + y, level) - pair.cur_frame->GetPixelValue(pair.uv_cur.x() * scales[level] + x + dx, pair.uv_cur.y() * scales[level] + y + dy, level);
+                    error = pair.ref_frame->GetPixelValue(pair.uv_ref.x() * Keyframe::scales[level] + x, pair.uv_ref.y() * Keyframe::scales[level] + y, level) - pair.cur_frame->GetPixelValue(pair.uv_cur.x() * Keyframe::scales[level] + x + dx, pair.uv_cur.y() * Keyframe::scales[level] + y + dy, level);
 
                     // compute H, b and set cost;
                     H += J * J.transpose();
@@ -487,7 +481,7 @@ void Viso::LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool
         }
 
         success.push_back(succ);
-        pair.uv_cur += V2d{ dx / scales[level], dy / scales[level] };
+        pair.uv_cur += V2d{ dx / Keyframe::scales[level], dy / Keyframe::scales[level] };
     }
 
     for (int i = 0; i < pairs.size(); ++i) {

@@ -161,7 +161,8 @@ void Initializer::OpticalFlowSingleLevel(const cv::Mat& img1, const cv::Mat& img
             V2d b = V2d::Zero();
             cost = 0;
 
-            if (kp.pt.x + dx <= half_patch_size_ || kp.pt.x + dx >= img1.cols - half_patch_size_ || kp.pt.y + dy <= half_patch_size_ || kp.pt.y + dy >= img1.rows - half_patch_size_) {
+            // +1 and -1 because we also need to calculate gradients
+            if ((int)(kp.pt.x - half_patch_size_ - std::abs(dx) - 1) < 0 || (int)(kp.pt.x + half_patch_size_ + std::abs(dx) + 1) >= img1.cols || (int)(kp.pt.y - half_patch_size_ - std::abs(dy) - 1) < 0 || (int)(kp.pt.y + half_patch_size_ + std::abs(dy) + 1) >= img1.rows) {
                 succ = false;
                 break;
             }
@@ -171,13 +172,9 @@ void Initializer::OpticalFlowSingleLevel(const cv::Mat& img1, const cv::Mat& img
                 for (int y = -half_patch_size_; y < half_patch_size_; ++y) {
                     double error = 0;
                     V2d J;
-                    if (!inverse) {
-                        // Forward Jacobian
-                        J = -GetImageGradient(img2, kp.pt.x + x + dx, kp.pt.y + y + dy);
-                    } else {
-                        // Inverse Jacobian
-                        J = -GetImageGradient(img1, kp.pt.x + x, kp.pt.y + y);
-                    }
+
+                    // Inverse Jacobian
+                    J = -GetImageGradient(img1, kp.pt.x + x, kp.pt.y + y);
 
                     error = GetPixelValue(img1, kp.pt.x + x, kp.pt.y + y) - GetPixelValue(img2, kp.pt.x + x + dx, kp.pt.y + y + dy);
 
