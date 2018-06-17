@@ -100,7 +100,14 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
                 }
 
                 Sophus::SE3d X = Sophus::SE3d(cur_frame->GetR(), cur_frame->GetT());
-                BA(true, nullptr, std::vector<V2d>(), std::vector<int>());
+                init_.ref_frame->setoccupied();
+                cur_frame->setoccupied();
+                //BA(true, nullptr, std::vector<V2d>(), std::vector<int>());
+                init_.kp2.clear();
+                cv::Ptr<cv::GFTTDetector> detector = cv::GFTTDetector::create(500, 0.01, 10); // maximum 500 keypoints
+                detector->detect(cur_frame->Mat(), init_.kp2);
+                cur_frame->setoccupied();
+                cur_frame->addnewfeature(init_.kp2);
                 state_ = kRunning;
 
                 break;
@@ -148,7 +155,16 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
         cv::imshow("Tracked", display);
         cv::waitKey(0);
 
-        BA(false, cur_frame, kp_after, tracked_points);
+        //BA(false, cur_frame, kp_after, tracked_points);
+
+        //update keyframe
+        //if
+        //add new feature
+        init_.kp1.clear();
+        cv::Ptr<cv::GFTTDetector> detector = cv::GFTTDetector::create(500, 0.01, 10); // maximum 500 keypoints
+        detector->detect(cur_frame->Mat(), init_.kp1);
+        cur_frame->setoccupied();
+        cur_frame->addnewfeature(init_.kp1);
         poses.Push(X);
     } break;
 

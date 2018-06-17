@@ -21,6 +21,11 @@ private:
     const int nr_pyramids_ = 4;
     const double pyramid_scale_ = 0.5;
     const double scales_[4] = { 1.0, 0.5, 0.25, 0.125 };
+    // Some constants.
+    int grid_row_;
+    int grid_col_;
+    const int grid_size_ = 20;
+    std::vector<bool> grid_occupy_; //record occupied grid
     std::vector<cv::Mat> pyramids_;
 
 public:
@@ -44,6 +49,11 @@ public:
                 cv::Size(pyramids_[i - 1].cols * pyramid_scale_, pyramids_[i - 1].rows * pyramid_scale_));
             pyramids_.push_back(pyr);
         }
+
+        //Set grid
+        grid_col_ = ceil(static_cast<double>(mat_.cols / grid_size_));
+        grid_row_ = ceil(static_cast<double>(mat_.rows / grid_size_));
+        grid_occupy_.resize(grid_col_*grid_row_, false);
     }
 
     ~Keyframe() = default;
@@ -123,6 +133,8 @@ public:
       keypoints_.push_back(kp);
       return keypoints_.size();
     }
+    void setoccupied();
+    void addnewfeature(std::vector<cv::KeyPoint> newfts_);
 };
 
 #endif
