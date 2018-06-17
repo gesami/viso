@@ -11,26 +11,31 @@
 class Keyframe {
 private:
     static long next_id_;
-    cv::Mat mat_;
     long id_;
+
     std::vector<cv::KeyPoint> keypoints_;
+    std::string time_;
+
+    cv::Mat mat_;
     M3d R_;
     V3d T_;
     M3d K_;
 
-    const int nr_pyramids_ = 4;
-    const double pyramid_scale_ = 0.5;
-    const double scales_[4] = { 1.0, 0.5, 0.25, 0.125 };
     std::vector<cv::Mat> pyramids_;
 
 public:
     using Ptr = std::shared_ptr<Keyframe>;
-    std::string times_;
+
+    static constexpr const int nr_pyramids = 4;
+    static constexpr const double pyramid_scale = 0.5;
+    static const double scales[];
+
     Keyframe(cv::Mat mat, std::string timestamp)
-        : mat_(mat), times_(timestamp)
+        : mat_(mat)
+        , time_(timestamp)
     {
         id_ = next_id_;
-        next_id_++;
+        ++next_id_;
 
         R_ = M3d::Identity();
         T_ = V3d::Zero();
@@ -38,10 +43,10 @@ public:
         // Pyramids
         pyramids_.push_back(mat_);
 
-        for (int i = 1; i < nr_pyramids_; i++) {
+        for (int i = 1; i < Keyframe::nr_pyramids; i++) {
             cv::Mat pyr;
             cv::pyrDown(pyramids_[i - 1], pyr,
-                cv::Size(pyramids_[i - 1].cols * pyramid_scale_, pyramids_[i - 1].rows * pyramid_scale_));
+                cv::Size(pyramids_[i - 1].cols * Keyframe::pyramid_scale, pyramids_[i - 1].rows * Keyframe::pyramid_scale));
             pyramids_.push_back(pyr);
         }
     }
@@ -84,8 +89,8 @@ public:
     {
         V3d uv1 = R_ * point + T_;
         uv1 /= uv1.z();
-        double u = scales_[level] * (uv1.x() * K_(0, 0) + K_(0, 2));
-        double v = scales_[level] * (uv1.y() * K_(1, 1) + K_(1, 2));
+        double u = scales[level] * (uv1.x() * K_(0, 0) + K_(0, 2));
+        double v = scales[level] * (uv1.y() * K_(1, 1) + K_(1, 2));
         return V2d{ u, v };
     }
 
@@ -101,27 +106,32 @@ public:
     inline std::vector<cv::KeyPoint>& Keypoints() { return keypoints_; }
 
     inline const cv::Mat& Mat() { return mat_; }
-    inline Sophus::SE3d GetPose() { return Sophus::SE3d(R_, T_);}
-    inline Sophus::SE3d SetPose(Sophus::SE3d pose) { R_ = pose.rotationMatrix(); T_ = pose.translation(); }
+    inline Sophus::SE3d GetPose() { return Sophus::SE3d(R_, T_); }
+    inline Sophus::SE3d SetPose(Sophus::SE3d pose)
+    {
+        R_ = pose.rotationMatrix();
+        T_ = pose.translation();
+    }
     inline M3d GetR() { return R_; }
     inline V3d GetT() { return T_; }
     inline void SetT(V3d T) { T_ = T; }
     inline void SetR(M3d R) { R_ = R; }
     inline M3d GetK() { return K_; }
     inline void SetK(M3d K) { K_ = K; }
+    inline const std::string& GetTime() { return time_; }
+    inline double GetScale(int level) { return Keyframe::scales[level]; }
 
-    inline double GetScale(int level) { return scales_[level]; }
-
-    inline const std::vector<cv::Mat>& Pyramids() { return pyramids_; }
+    inline const std::vector<cv::Mat>& GetPyramids() { return pyramids_; }
 
     static long GetNextId()
     {
         return next_id_;
     }
 
-    inline int AddKeypoint(cv::KeyPoint kp) {
-      keypoints_.push_back(kp);
-      return keypoints_.size();
+    inline int AddKeypoint(cv::KeyPoint kp)
+    {
+        keypoints_.push_back(kp);
+        return keypoints_.size();
     }
 };
 

@@ -25,6 +25,6 @@ SET(G2O_LIBS g2o_core g2o_stuff g2o_types_sba)
 
 include_directories(include)
 
-add_executable(viso src/keyframe.cpp include/viso.h src/viso.cpp src/main.cpp include/timer.h include/map_point.h include/ring_buffer.h include/bundle_adjuster.h)
+add_executable(viso src/keyframe.cpp include/viso.h src/viso.cpp src/main.cpp include/timer.h include/map_point.h include/ring_buffer.h include/bundle_adjuster.h src/initializer.cpp)
 target_link_libraries(viso ${OpenCV_LIBS} ${Pangolin_LIBRARIES} ${G2O_LIBS})
 

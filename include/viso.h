@@ -7,6 +7,7 @@
 #include "keyframe.h"
 #include "map.h"
 #include "ring_buffer.h"
+#include <initializer.h>
 #include <sophus/se3.hpp>
 #include <tuple>
 
@@ -20,11 +21,11 @@ private:
 
     // Some constants.
     const int min_inlier_cnt = 100;
-    const int reinitialize_after = 20;
+    const int reset_after = 20;
     const int fast_thresh = 40;
     const double projection_error_thresh = 0.3;
     const double parallax_thresh = 1;
-    const double disparity_squared_thresh = 30 * 30; // squared, 15 pixels
+    const double disparity_thresh = 30; // squared, 15 pixels
     const double half_patch_size = 10;
     const double photometric_error_thresh = (half_patch_size * 2) * (half_patch_size * 2) * 15 * 15; // squared error for the whole patch, 15 gray values per pixel
     const double lk_d2_factor = 1.3 * 1.3; // deviation of median disparity
@@ -46,11 +47,14 @@ private:
         V3d T;
     } init_;
 
+    Initializer initializer;
     Map map_;
     State state_;
 
 public:
     Viso(double fx, double fy, double cx, double cy)
+        : initializer(reset_after, 10, half_patch_size, photometric_error_thresh,
+              min_inlier_cnt, disparity_thresh, projection_error_thresh)
     {
         K << fx, 0, cx, 0, fy, cy, 0, 0, 1;
         K_inv = K.inverse();
@@ -75,6 +79,8 @@ public:
         }
         return points;
     }
+
+    inline Map* GetMap() { return &map_; }
 
 private:
     // |points1| and |points2| are observations on the image plane,
@@ -132,7 +138,7 @@ private:
 
     void LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before, std::vector<V2d>& kp_after, std::vector<int>& tracked_points);
     void LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool>& success, std::vector<V2d>& kp, int level);
-    void BA(bool map_only, Keyframe::Ptr current_frame, const std::vector<V2d>&  kp, const std::vector<int>& tracked_points);
+    void BA(bool map_only, Keyframe::Ptr current_frame, const std::vector<V2d>& kp, const std::vector<int>& tracked_points);
 };
 
 #endif

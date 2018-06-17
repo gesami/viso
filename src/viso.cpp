@@ -11,114 +11,18 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
     cur_frame->SetK(K);
 
     switch (state_) {
-    case kInitialization:
-        if (init_.frame_cnt > 0 && init_.frame_cnt <= reinitialize_after) {
+    case kInitialization: {
 
-            OpticalFlowMultiLevel(init_.ref_frame,
-                cur_frame,
-                init_.kp1,
-                init_.kp2,
-                init_.success,
-                true);
-
-            {
-                auto iter1 = init_.kp1.begin();
-                auto iter2 = init_.kp2.begin();
-                auto iter3 = init_.success.begin();
-
-                while (iter1 != init_.kp1.end()) {
-                    if (!(*iter3)) {
-                        iter1 = init_.kp1.erase(iter1);
-                        iter2 = init_.kp2.erase(iter2);
-                    } else {
-                        ++iter1;
-                        ++iter2;
-                    }
-                    ++iter3;
-                }
-
-                init_.success.clear();
-            }
-
-            std::vector<V3d> p1;
-            std::vector<V3d> p2;
-
-            for (int i = 0; i < init_.kp1.size(); ++i) {
-                p1.emplace_back(K_inv * V3d{ init_.kp1[i].pt.x, init_.kp1[i].pt.y, 1 });
-                p2.emplace_back(K_inv * V3d{ init_.kp2[i].pt.x, init_.kp2[i].pt.y, 1 });
-            }
-
-            int nr_inliers = 0;
-            std::vector<V3d> points3d;
-            PoseEstimation2d2d(p1, p2, init_.R, init_.T, init_.success, nr_inliers, points3d);
-            Reconstruct(p1, p2, init_.R, init_.T, init_.success, nr_inliers, points3d);
-
-            // Visualization
-            cv::Mat img;
-            cv::cvtColor(cur_frame->Mat(), img, CV_GRAY2BGR);
-
-            for (int i = 0; i < p2.size(); i++) {
-                cv::Scalar color(255, 0, 0);
-                if (nr_inliers > 0 && init_.success[i]) {
-                    color = cv::Scalar(0, 255, 0);
-                }
-                cv::Point2f kp1 = init_.kp1[i].pt;
-                V3d kp2 = K * p2[i];
-                cv::line(img, kp1, { (int)kp2.x(), (int)kp2.y() }, color);
-            }
-
-            cv::imshow("Optical flow", img);
-            //
-
-            std::cout << "Tracked points: " << p1.size()
-                      << ", Inliers: " << nr_inliers << "\n";
-
-            cv::waitKey(10);
-            const double thresh = 0.9;
-            if (nr_inliers > min_inlier_cnt) {
-                std::cout << "Initiamin_inlier_cntlized!\n";
-                map_.AddKeyframe(init_.ref_frame);
-                map_.AddKeyframe(cur_frame);
-
-                cur_frame->SetR(init_.R);
-                cur_frame->SetT(init_.T);
-
-                poses.Push(init_.ref_frame->GetPose());
-                poses.Push(cur_frame->GetPose());
-
-                int cnt = 0;
-                for (int i = 0; i < p1.size(); ++i) {
-                    if (init_.success[i]) {
-                        init_.ref_frame->AddKeypoint(init_.kp1[i]);
-                        cur_frame->AddKeypoint(init_.kp2[i]);
-                        MapPoint::Ptr map_point = std::make_shared<MapPoint>(points3d[cnt]);
-                        map_point->AddObservation(init_.ref_frame, cnt); //modify index
-                        map_point->AddObservation(cur_frame, cnt); //modify index
-                        map_.AddPoint(map_point);
-                        ++cnt;
-                    }
-                }
-
-                Sophus::SE3d X = Sophus::SE3d(cur_frame->GetR(), cur_frame->GetT());
-                BA(true, nullptr, std::vector<V2d>(), std::vector<int>());
-                state_ = kRunning;
-
-                break;
-            }
-        } else {
-            init_.kp1.clear();
-            init_.kp2.clear();
-            init_.success.clear();
-            //cv::FAST(cur_frame->Mat(), init_.kp1, fast_thresh);
-            cv::Ptr<cv::GFTTDetector> detector = cv::GFTTDetector::create(500, 0.01, 10); // maximum 500 keypoints
-            detector->detect(cur_frame->Mat(), init_.kp1);
-            init_.kp2 = init_.kp1;
-            init_.ref_frame = cur_frame;
-            init_.frame_cnt = 0;
+        // Visualization
+        cv::Mat img;
+        cv::cvtColor(cur_frame->Mat(), img, CV_GRAY2BGR);
+        bool initialized = initializer.InitializeMap(cur_frame, &map_, img);
+        cv::imshow("Optical flow", img);
+        cv::waitKey(10);
+        if (initialized) {
+            state_ = kRunning;
         }
-
-        ++init_.frame_cnt;
-        break;
+    } break;
 
     case kRunning: {
         Sophus::SE3d X = Sophus::SE3d(last_frame->GetR(), last_frame->GetT());
@@ -228,7 +132,7 @@ void Viso::PoseEstimation2d2d(std::vector<V3d> p1, std::vector<V3d> p2,
     std::cout << "Disparity sq.: " << disparity_squared << "\n";
     std::cout << "Tracking : " << p1.size() << "\n";
 
-    if (disparity_squared < disparity_squared_thresh) {
+    if (disparity_squared < disparity_thresh * disparity_thresh) {
         return;
     }
 
@@ -407,7 +311,7 @@ void Viso::OpticalFlowMultiLevel(
         }
 
         std::vector<bool> success_single;
-        OpticalFlowSingleLevel(ref_frame->Pyramids()[i], cur_frame->Pyramids()[i], kp1_, kp2, success_single, inverse);
+        OpticalFlowSingleLevel(ref_frame->GetPyramids()[i], cur_frame->GetPyramids()[i], kp1_, kp2, success_single, inverse);
         success = success_single;
 
         if (i != 0) {
