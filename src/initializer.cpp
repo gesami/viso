@@ -227,7 +227,6 @@ void Initializer::OpticalFlowMultiLevel(
     // Scale the initial guess for kp2.
     for (int j = 0; j < kp2.size(); ++j) {
         kp2[j].pt *= Keyframe::scales[Keyframe::nr_pyramids - 1];
-        kp2[j].size *= Keyframe::scales[Keyframe::nr_pyramids - 1];
     }
 
     for (int i = Keyframe::nr_pyramids - 1; i >= 0; --i) {
@@ -286,7 +285,7 @@ void Initializer::PoseEstimation(
 
     std::cout << "Tracking : " << p1.size() << "\n";
 
-    const double thresh = reprojection_thresh_ / (K_(0, 0) + K_(1, 1));
+    const double thresh = reprojection_thresh_ / std::sqrt(K_(0, 0) * K_(0, 0) + K_(1, 1) * K_(1, 1));
     cv::Mat outlier_mask_essential;
     cv::Mat essential = cv::findEssentialMat(
         p1, p2, 1.0, { 0.0, 0.0 }, CV_FM_RANSAC, 0.99, thresh, outlier_mask_essential);
@@ -417,8 +416,8 @@ void Initializer::Reconstruct(
 #endif
             // projection error
             V3d P1_proj = P1 / P1.z();
-            double dx = P1_proj.x() - p1[i].x;
-            double dy = P1_proj.y() - p1[i].y;
+            double dx = (P1_proj.x() - p1[i].x) * K_(0, 0);
+            double dy = (P1_proj.y() - p1[i].y) * K_(1, 1);
             double projection_error1 = std::sqrt(dx * dx + dy * dy);
 
             if (projection_error1 > reprojection_thresh_) {
@@ -429,8 +428,8 @@ void Initializer::Reconstruct(
 
             V3d P2 = R * P1 + T;
             V3d P2_proj = P2 / P2.z();
-            dx = P2_proj.x() - p2[i].x;
-            dy = P2_proj.y() - p2[i].y;
+            dx = (P2_proj.x() - p2[i].x) * K_(0, 0);
+            dy = (P2_proj.y() - p2[i].y) * K_(1, 1);
             double projection_error2 = std::sqrt(dx * dx + dy * dy);
 
             if (projection_error2 > reprojection_thresh_) {
