@@ -52,8 +52,13 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
 
         cv::imshow("Tracked", display);
         cv::waitKey(0);
-
         BA(false, cur_frame, kp_after, tracked_points);
+
+        //BA(false, cur_frame, kp_after, tracked_points);
+
+        //update keyframe
+        //if
+        //add new feature
     } break;
 
     default:
