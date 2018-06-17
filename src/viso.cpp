@@ -20,7 +20,7 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
         cv::imshow("Optical flow", img);
         cv::waitKey(10);
         if (initialized) {
-            state_ = kFinished;
+            state_ = kRunning;
             BA(true, {}, {}, {});
         }
     } break;
