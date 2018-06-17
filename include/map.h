@@ -29,6 +29,16 @@ public:
         }
         return points3d;
     }
+
+    inline std::vector<Sophus::SE3d> GetPoses()
+    {
+        std::vector<Sophus::SE3d> poses;
+        poses.reserve(keyframes_.size());
+        for (const auto& kf : keyframes_) {
+            poses.push_back(kf->GetPose());
+        }
+        return poses;
+    }
 };
 
 #endif

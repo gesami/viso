@@ -21,6 +21,7 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
         cv::waitKey(10);
         if (initialized) {
             state_ = kFinished;
+            BA(true, {}, {}, {});
         }
     } break;
 
@@ -53,7 +54,6 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
         cv::waitKey(0);
 
         BA(false, cur_frame, kp_after, tracked_points);
-        poses.Push(X);
     } break;
 
     default:
@@ -63,392 +63,7 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
     last_frame = cur_frame;
 }
 
-void Viso::RecoverPoseHomography(const cv::Mat& H, M3d& R, V3d& T)
-{
-    cv::Mat pose = cv::Mat::eye(3, 4, CV_64FC1); //3x4 matrix
-    float norm1 = (float)norm(H.col(0));
-    float norm2 = (float)norm(H.col(1));
-    float tnorm = (norm1 + norm2) / 2.0f;
-
-    cv::Mat v1 = H.col(0);
-    cv::Mat v2 = pose.col(0);
-
-    cv::normalize(v1, v2); // Normalize the rotation
-
-    v1 = H.col(1);
-    v2 = pose.col(1);
-
-    cv::normalize(v1, v2);
-
-    v1 = pose.col(0);
-    v2 = pose.col(1);
-
-    cv::Mat v3 = v1.cross(v2); //Computes the cross-product of v1 and v2
-    cv::Mat c2 = pose.col(2);
-    v3.copyTo(c2);
-
-    pose.col(3) = H.col(2) / tnorm; //vector t [R|t]
-
-    cv::cv2eigen(pose.col(3), T);
-    cv::cv2eigen(pose(cv::Rect(0, 0, 3, 3)), R);
-}
-
-// TODO: Move this to a separate class.
-void Viso::PoseEstimation2d2d(std::vector<V3d> p1, std::vector<V3d> p2,
-    M3d& R, V3d& T, std::vector<bool>& inliers,
-    int& nr_inliers, std::vector<V3d>& points3d)
-{
-    nr_inliers = 0;
-
-    if (p1.size() < 10) {
-        return;
-    }
-
-    std::vector<M3d> rotations;
-    std::vector<V3d> translations;
-
-    const double thresh = projection_error_thresh / std::sqrt(K(0, 0) * K(0, 0) + K(1, 1) * K(1, 1));
-    const double f = (K(0, 0) + K(1, 1)) / 2;
-
-    std::vector<cv::Point2f> p1_;
-    std::vector<cv::Point2f> p2_;
-
-    double disparity_squared = 0;
-
-    for (int i = 0; i < p1.size(); ++i) {
-        double dx = p2[i].x() - p1[i].x();
-        double dy = p2[i].y() - p1[i].y();
-        disparity_squared += dx * dx + dy * dy;
-
-        p1_.push_back({ (float)p1[i].x(), (float)p1[i].y() });
-        p2_.push_back({ (float)p2[i].x(), (float)p2[i].y() });
-    }
-
-    if (disparity_squared != 0) {
-        disparity_squared /= p1.size();
-        disparity_squared *= f * f;
-    }
-
-    std::cout << "Disparity sq.: " << disparity_squared << "\n";
-    std::cout << "Tracking : " << p1.size() << "\n";
-
-    if (disparity_squared < disparity_thresh * disparity_thresh) {
-        return;
-    }
-
-    cv::Mat outlier_mask_essential;
-    cv::Mat essential = cv::findEssentialMat(
-        p1_, p2_, 1.0, { 0.0, 0.0 }, CV_FM_RANSAC, 0.99, thresh, outlier_mask_essential);
-
-    if (essential.data != NULL) {
-        rotations.push_back(M3d::Identity());
-        translations.push_back(V3d::Zero());
-
-        // This method does the depth check. Only users points which are not masked
-        // out by
-        // the outlier mask.
-        cv::Mat R_ess, T_ess;
-        cv::recoverPose(essential, p1_, p2_, R_ess, T_ess, 1.0, {}, outlier_mask_essential);
-        cv::cv2eigen(R_ess, rotations[0]);
-        cv::cv2eigen(T_ess, translations[0]);
-    }
-
-    for (int i = 0; i < p1_.size(); ++i) {
-        if (outlier_mask_essential.at<bool>(i, 1)) {
-            nr_inliers++;
-            inliers.push_back(true);
-        } else {
-            inliers.push_back(false);
-        }
-    }
-
-    R = rotations[0];
-    T = translations[0];
-
-//#define USE_HOMOGRAPHY
 #if 0
-    cv::Mat outlier_mask_homography;
-    cv::Mat homography = cv::findHomography(p1_, p2_, CV_RANSAC, thresh, outlier_mask_homography, 2000, 0.99);
-
-    if (homography.data != NULL) {
-        std::vector<cv::Mat> rotations_homo, translations_homo, normals;
-        cv::decomposeHomographyMat(homography, cv::Mat::eye(3, 3, CV_64F), rotations_homo, translations_homo, normals);
-
-        for (int i = 0; i < rotations_homo.size(); ++i) {
-            rotations.push_back(M3d::Identity());
-            translations.push_back(V3d::Zero());
-            cv::cv2eigen(rotations_homo[i], rotations[rotations.size() - 1]);
-            cv::cv2eigen(translations_homo[i], translations[translations.size() - 1]);
-        }
-    }
-
-#endif
-    //SelectMotion(p1, p2, rotations, translations, R, T, inliers, nr_inliers, points3d);
-}
-
-// TODO: Move this to a separate class.
-void Viso::OpticalFlowSingleLevel(const cv::Mat& img1, const cv::Mat& img2,
-    const std::vector<cv::KeyPoint>& kp1,
-    std::vector<cv::KeyPoint>& kp2,
-    std::vector<bool>& success, bool inverse)
-{
-
-    // parameters
-    int iterations = 10;
-    bool have_initial = !kp2.empty();
-
-    for (size_t i = 0; i < kp1.size(); i++) {
-        auto kp = kp1[i];
-        double dx = 0, dy = 0; // dx,dy need to be estimated
-        if (have_initial) {
-            dx = kp2[i].pt.x - kp.pt.x;
-            dy = kp2[i].pt.y - kp.pt.y;
-        }
-
-        double cost = 0, lastCost = 0;
-        bool succ = true; // indicate if this point succeeded
-
-        // Gauss-Newton iterations
-        for (int iter = 0; iter < iterations; iter++) {
-            Eigen::Matrix2d H = Eigen::Matrix2d::Zero();
-            Eigen::Vector2d b = Eigen::Vector2d::Zero();
-            cost = 0;
-
-            if (kp.pt.x + dx <= half_patch_size || kp.pt.x + dx >= img1.cols - half_patch_size || kp.pt.y + dy <= half_patch_size || kp.pt.y + dy >= img1.rows - half_patch_size) {
-                succ = false;
-                break;
-            }
-
-            // compute cost and jacobian
-            for (int x = -half_patch_size; x < half_patch_size; x++)
-                for (int y = -half_patch_size; y < half_patch_size; y++) {
-
-                    double error = 0;
-                    V2d J; // Jacobian
-                    if (!inverse) {
-                        // Forward Jacobian
-                        J = -GetImageGradient(img2, kp.pt.x + x + dx, kp.pt.y + y + dy);
-                    } else {
-                        // Inverse Jacobian
-                        J = -GetImageGradient(img1, kp.pt.x + x, kp.pt.y + y);
-                    }
-
-                    error = GetPixelValue(img1, kp.pt.x + x, kp.pt.y + y) - GetPixelValue(img2, kp.pt.x + x + dx, kp.pt.y + y + dy);
-
-                    // compute H, b and set cost;
-                    H += J * J.transpose();
-                    b += -J * error;
-                    cost += error * error;
-                }
-
-            Eigen::Vector2d update = H.inverse() * b;
-
-            if (std::isnan(update[0])) {
-                // sometimes occurred when we have a black or white patch and H is
-                // irreversible
-                std::cout << "update is nan" << std::endl;
-                succ = false;
-                break;
-            }
-
-            if (iter > 0 && cost > lastCost) {
-                break;
-            }
-
-            // update dx, dy
-            dx += update[0];
-            dy += update[1];
-            lastCost = cost;
-
-            if (lastCost > photometric_error_thresh) {
-                succ = false;
-            } else {
-                succ = true;
-            }
-        }
-
-        success.push_back(succ);
-
-        // set kp2
-        if (have_initial) {
-            kp2[i].pt = kp.pt + cv::Point2f((float)dx, (float)dy);
-        } else {
-            cv::KeyPoint tracked = kp;
-            tracked.pt += cv::Point2f((float)dx, (float)dy);
-            kp2.push_back(tracked);
-        }
-    }
-}
-
-// TODO: Move this to a separate class.
-void Viso::OpticalFlowMultiLevel(
-    const Keyframe::Ptr ref_frame,
-    const Keyframe::Ptr cur_frame,
-    const std::vector<cv::KeyPoint>& kp1,
-    std::vector<cv::KeyPoint>& kp2,
-    std::vector<bool>& success, bool inverse)
-{
-    // parameters
-    // TODO: Move these parameters to a common place.
-    const int nr_pyramids = 4;
-    const double pyramid_scale = 0.5;
-    const double scales[] = { 1.0, 0.5, 0.25, 0.125 };
-
-    const int start = 3;
-
-    // Scale the initial guess for kp2.
-    for (int j = 0; j < kp2.size(); ++j) {
-        kp2[j].pt *= scales[start];
-        kp2[j].size *= scales[start];
-    }
-
-    for (int i = start; i >= 0; --i) {
-        std::vector<cv::KeyPoint> kp1_ = kp1;
-
-        for (int j = 0; j < kp1_.size(); ++j) {
-            kp1_[j].pt *= scales[i];
-            kp1_[j].size *= scales[i];
-        }
-
-        std::vector<bool> success_single;
-        OpticalFlowSingleLevel(ref_frame->GetPyramids()[i], cur_frame->GetPyramids()[i], kp1_, kp2, success_single, inverse);
-        success = success_single;
-
-        if (i != 0) {
-            for (int j = 0; j < kp1_.size(); ++j) {
-                kp2[j].pt /= pyramid_scale;
-                kp2[j].size /= pyramid_scale;
-            }
-        }
-    }
-}
-
-// We want to find the 4d-coorindates of point P = (P1, P2, P3, 1)^T.
-// lambda1 * x1 = Pi1 * P
-// lambda2 * x2 = Pi2 * P
-//
-// I:   lambda1 * x11 = Pi11 * P
-// II:  lambda1 * x12 = Pi12 * P
-// III: lambda1       = Pi13 * P
-//
-// III in I and II
-// I':   Pi13 * P * x11 = Pi11 * P
-// II':  Pi13 * P * x12 = Pi12 * P
-//
-// I'':   (x11 * Pi13  - Pi11) * P = 0
-// II'':  (x12 * Pi13  - Pi12) * p = 0
-//
-// We get another set of two equations from lambda2 * x2 = Pi2 * P.
-// Finally we can construct a 4x4 matrix A such that A * P = 0
-// A = [[x11 * Pi13  - Pi11];
-//      [x12 * Pi13  - Pi12];
-//      [x21 * Pi23  - Pi21];
-//      [x22 * Pi13  - Pi22]];
-
-// TODO: Move this to a separate class.
-void Viso::Triangulate(const M34d& Pi1, const M34d& Pi2, const V3d& x1,
-    const V3d& x2, V3d& P)
-{
-    M4d A = M4d::Zero();
-    A.row(0) = x1.x() * Pi1.row(2) - Pi1.row(0);
-    A.row(1) = x1.y() * Pi1.row(2) - Pi1.row(1);
-    A.row(2) = x2.x() * Pi2.row(2) - Pi2.row(0);
-    A.row(3) = x2.y() * Pi2.row(2) - Pi2.row(1);
-
-    Eigen::JacobiSVD<M4d> svd(A, Eigen::ComputeFullV);
-    M4d V = svd.matrixV();
-
-    // The solution is the last column V. This gives us a homogeneous
-    // point, so we need to normalize.
-    P = V.col(3).block<3, 1>(0, 0) / V(3, 3);
-}
-
-// TODO: Move this to a separate class.
-void Viso::Reconstruct(const std::vector<V3d>& p1, const std::vector<V3d>& p2,
-    const M3d& R, V3d& T, std::vector<bool>& inliers,
-    int& nr_inliers, std::vector<V3d>& points3d)
-{
-    if (nr_inliers == 0) {
-        return;
-    }
-
-    M34d Pi1 = MakePI0();
-    M34d Pi2 = MakePI0() * MakeSE3(R, T);
-
-#if 0
-  V3d O1 = V3d::Zero();
-  V3d O2 = -R*T;
-#endif
-
-    points3d.clear();
-
-    int j = 0;
-    for (int i = 0; i < p1.size(); ++i) {
-        if (inliers[i]) {
-            V3d P1;
-            Triangulate(Pi1, Pi2, p1[i], p2[i], P1);
-
-#if 0
-          // parallax
-          V3d n1 = P1 - O1;
-          V3d n2 = P1 - O2;
-          double d1 = n1.norm();
-          double d2 = n2.norm();
-
-          double parallax = (n1.transpose () * n2);
-          parallax /=  (d1 * d2);
-          parallax = acos(parallax)*180/CV_PI;
-          if (parallax > parallax_thresh)
-          {
-              inliers[i] = false;
-              nr_inliers--;
-              continue;
-          }
-#endif
-            // projection error
-            V3d P1_proj = P1 / P1.z();
-            double dx = (P1_proj.x() - p1[i].x()) * K(0, 0);
-            double dy = (P1_proj.y() - p1[i].y()) * K(1, 1);
-            double projection_error1 = std::sqrt(dx * dx + dy * dy);
-
-            if (projection_error1 > projection_error_thresh) {
-                inliers[i] = false;
-                nr_inliers--;
-                continue;
-            }
-
-            V3d P2 = R * P1 + T;
-            V3d P2_proj = P2 / P2.z();
-            dx = (P2_proj.x() - p2[i].x()) * K(0, 0);
-            dy = (P2_proj.y() - p2[i].y()) * K(1, 1);
-            double projection_error2 = std::sqrt(dx * dx + dy * dy);
-
-            if (projection_error2 > projection_error_thresh) {
-                inliers[i] = false;
-                nr_inliers--;
-                continue;
-            }
-
-            points3d.push_back(P1);
-        }
-    }
-
-    // Normalization
-    double mean_depth = 0;
-    for (const auto& p : points3d) {
-        mean_depth += p.z();
-    }
-
-    if (mean_depth != 0) {
-        mean_depth /= points3d.size();
-
-        for (auto& p : points3d) {
-            p /= mean_depth;
-        }
-
-        T /= mean_depth;
-    }
-}
 void Viso::SelectMotion(const std::vector<V3d>& p1,
     const std::vector<V3d>& p2,
     const std::vector<M3d>& rotations,
@@ -567,6 +182,7 @@ void Viso::SelectMotion(const std::vector<V3d>& p1,
         T_out /= mean_depth;
     }
 }
+#endif
 
 M26d dPixeldXi(const M3d& K, const M3d& R, const V3d& T, const V3d& P,
     const double& scale)
@@ -632,14 +248,14 @@ void Viso::DirectPoseEstimationSingleLayer(int level,
             bool hasNaN = uv_cur.array().hasNaN() || uv_ref.array().hasNaN();
             assert(!hasNaN);
 
-            bool good = frame->IsInside(u_ref - half_patch_size,
-                            v_ref - half_patch_size, level)
-                && frame->IsInside(u_ref + half_patch_size,
-                       v_ref + half_patch_size, level)
-                && current_frame->IsInside(u_cur - half_patch_size,
-                       v_cur - half_patch_size, level)
-                && current_frame->IsInside(u_cur + half_patch_size,
-                       v_cur + half_patch_size, level);
+            bool good = frame->IsInside(u_ref - lk_half_patch_size,
+                            v_ref - lk_half_patch_size, level)
+                && frame->IsInside(u_ref + lk_half_patch_size,
+                       v_ref + lk_half_patch_size, level)
+                && current_frame->IsInside(u_cur - lk_half_patch_size,
+                       v_cur - lk_half_patch_size, level)
+                && current_frame->IsInside(u_cur + lk_half_patch_size,
+                       v_cur + lk_half_patch_size, level);
 
             if (!good) {
                 continue;
@@ -650,8 +266,8 @@ void Viso::DirectPoseEstimationSingleLayer(int level,
             M26d J_pixel_xi = dPixeldXi(K, T21.rotationMatrix(), T21.translation(),
                 P1, scale); // pixel to \xi in Lie algebra
 
-            for (int x = -half_patch_size; x < half_patch_size; x++) {
-                for (int y = -half_patch_size; y < half_patch_size; y++) {
+            for (int x = -lk_half_patch_size; x < lk_half_patch_size; x++) {
+                for (int y = -lk_half_patch_size; y < lk_half_patch_size; y++) {
                     double error = frame->GetPixelValue(u_ref + x, v_ref + y, level) - current_frame->GetPixelValue(u_cur + x, v_cur + y, level);
                     V2d J_img_pixel = current_frame->GetGradient(u_cur + x, v_cur + y, level);
                     V6d J = -J_img_pixel.transpose() * J_pixel_xi;
@@ -824,15 +440,15 @@ void Viso::LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool
             cost = 0;
 
             if (
-                !pair.ref_frame->IsInside(pair.uv_ref.x() * scales[level] + dx - half_patch_size, pair.uv_ref.y() * scales[level] + dy - half_patch_size, level) || !pair.ref_frame->IsInside(pair.uv_ref.x() * scales[level] + dx + half_patch_size, pair.uv_ref.y() * scales[level] + dy + half_patch_size, level)) {
+                !pair.ref_frame->IsInside(pair.uv_ref.x() * scales[level] + dx - lk_half_patch_size, pair.uv_ref.y() * scales[level] + dy - lk_half_patch_size, level) || !pair.ref_frame->IsInside(pair.uv_ref.x() * scales[level] + dx + lk_half_patch_size, pair.uv_ref.y() * scales[level] + dy + lk_half_patch_size, level)) {
                 succ = false;
                 break;
             }
 
             double error = 0;
             // compute cost and jacobian
-            for (int x = -half_patch_size; x < half_patch_size; x++) {
-                for (int y = -half_patch_size; y < half_patch_size; y++) {
+            for (int x = -lk_half_patch_size; x < lk_half_patch_size; x++) {
+                for (int y = -lk_half_patch_size; y < lk_half_patch_size; y++) {
                     V2d J;
                     if (!inverse) {
                         J = -pair.cur_frame->GetGradient(pair.uv_cur.x() * scales[level] + x + dx, pair.uv_cur.y() * scales[level] + y + dy, level);
@@ -863,7 +479,7 @@ void Viso::LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool
             dy += update[1];
             lastCost = cost;
 
-            if (lastCost > photometric_error_thresh) {
+            if (lastCost > lk_photometric_thresh) {
                 succ = false;
             } else {
                 succ = true;
@@ -918,8 +534,9 @@ void Viso::BA(bool map_only, Keyframe::Ptr current_frame, const std::vector<V2d>
     for (size_t i = 0; i < keyframes.size(); i++, id++) {
         VertexSophus* cam = new VertexSophus();
         cam->setId(id);
-        if (i == 0)
+        if (i < 1) {
             cam->setFixed(true); //fix the pose of the first frame
+        }
         cam->setEstimate(keyframes[i]->GetPose());
         optimizer.addVertex(cam);
         cameras_v.push_back(cam);
@@ -932,7 +549,6 @@ void Viso::BA(bool map_only, Keyframe::Ptr current_frame, const std::vector<V2d>
         cam->setEstimate(current_frame->GetPose());
         optimizer.addVertex(cam);
         cameras_v.push_back(cam);
-        cameras_v[1]->setFixed(true);
     }
 
     for (size_t i = 0; i < map_.GetPoints().size(); i++) {
@@ -977,15 +593,19 @@ void Viso::BA(bool map_only, Keyframe::Ptr current_frame, const std::vector<V2d>
     std::cout << "end!" << std::endl;
 
     poses_opt.clear();
+    poses.clear();
     for (int i = 0; i < keyframes.size(); i++) {
         VertexSophus* pose = dynamic_cast<VertexSophus*>(optimizer.vertex(map_.GetPoints().size() + i));
         Sophus::SE3d p_opt = pose->estimate();
+
+        poses.push_back(keyframes[i]->GetPose());
         keyframes[i]->SetPose(p_opt);
         poses_opt.push_back(p_opt);
     }
 
     if (!map_only) {
         VertexSophus* pose = cameras_v[cameras_v.size() - 1];
+        poses.push_back(current_frame->GetPose());
         current_frame->SetPose(pose->estimate());
         poses_opt.push_back(pose->estimate());
     }
@@ -995,6 +615,6 @@ void Viso::BA(bool map_only, Keyframe::Ptr current_frame, const std::vector<V2d>
         VertexSBAPointXYZ* point = dynamic_cast<VertexSBAPointXYZ*>(optimizer.vertex(i));
         V3d point_opt = point->estimate();
         map_.GetPoints()[i]->SetWorldPos(point_opt);
-        //        points_opt.push_back(point_opt);
+        //points_opt.push_back(point_opt);
     }
 }

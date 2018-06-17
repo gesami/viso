@@ -11,9 +11,7 @@
 
 class Initializer {
 public:
-    Initializer(int reset_after, int iterations, int half_width_size, double photometric_thresh, int min_good_cnt,
-        double disparity_thresh, double reprojection_thresh);
-
+    Initializer();
     bool InitializeMap(Keyframe::Ptr cur_frame, Map* map, const cv::Mat& display);
 
 private:
@@ -53,7 +51,9 @@ private:
         const M3d& R, const V3d& T, std::vector<bool>& success,
         int& good_cnt, std::vector<V3d>& points3d);
 
-    void NormalizeDepth(V3d& T, std::vector<V3d> points3d);
+    void NormalizeDepth(V3d& T, std::vector<V3d>& points3d);
+
+    void Visualize(const cv::Mat& display, const std::vector<cv::KeyPoint>& kp1, const std::vector<cv::KeyPoint>& kp2, const std::vector<bool>& success, const int& good_cnt);
 
     Keyframe::Ptr ref_frame_;
     std::vector<cv::KeyPoint> cur_kp_;
@@ -66,7 +66,7 @@ private:
     // Parameters
     int reset_after_;
     int iterations_;
-    int half_width_size_;
+    int half_patch_size_;
     double photometric_thresh_;
     int min_good_cnt_;
     double disparity2_thresh_;

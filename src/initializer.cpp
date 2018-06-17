@@ -5,17 +5,16 @@
 #include <initializer.h>
 #include <opencv2/core/eigen.hpp>
 
-Initializer::Initializer(int reset_after, int iterations, int half_width_size, double photometric_thresh, int min_good_cnt,
-    double disparity_thresh, double reprojection_thresh)
-    : reset_after_(reset_after)
-    , iterations_(iterations)
-    , half_width_size_(half_width_size)
-    , photometric_thresh_(photometric_thresh)
-    , min_good_cnt_(min_good_cnt)
-    , disparity2_thresh_(disparity_thresh * disparity_thresh)
-    , reprojection_thresh_(reprojection_thresh)
+Initializer::Initializer()
 {
     frame_cnt_ = 0;
+    reset_after_ = 20;
+    iterations_ = 10;
+    half_patch_size_ = 10;
+    photometric_thresh_ = (half_patch_size_ * 2) * (half_patch_size_ * 2) * 15 * 15; // squared error for the whole patch, 15 gray values per pixel
+    min_good_cnt_ = 100;
+    disparity2_thresh_ = 35 * 35; // squared, 15 pixels
+    reprojection_thresh_ = 0.3;
 }
 
 bool Initializer::InitializeMap(Keyframe::Ptr cur_frame, Map* map, const cv::Mat& display)
@@ -29,14 +28,7 @@ bool Initializer::InitializeMap(Keyframe::Ptr cur_frame, Map* map, const cv::Mat
             cur_kp_, track_success_, good_cnt,
             true);
 
-        // Visualization
-        for (int i = 0; i < ref_kp_.size(); i++) {
-            cv::Scalar color(255, 0, 0);
-            if (good_cnt > 0 && track_success_[i]) {
-                color = cv::Scalar(0, 255, 0);
-            }
-            cv::line(display, ref_kp_[i].pt, cur_kp_[i].pt, color);
-        }
+        Visualize(display, ref_kp_, cur_kp_, track_success_, good_cnt);
 
         if (good_cnt < min_good_cnt_) {
             return false;
@@ -56,15 +48,25 @@ bool Initializer::InitializeMap(Keyframe::Ptr cur_frame, Map* map, const cv::Mat
 
         std::vector<cv::Point2f> p1;
         std::vector<cv::Point2f> p2;
+        std::vector<cv::KeyPoint> ref_kp_new;
+        std::vector<cv::KeyPoint> cur_kp_new;
+
         p1.reserve(good_cnt);
         p2.reserve(good_cnt);
+        ref_kp_new.reserve(good_cnt);
+        cur_kp_new.reserve(good_cnt);
 
         for (int i = 0; i < ref_kp_.size(); ++i) {
             if (track_success_[i]) {
                 p1.push_back({ (ref_kp_[i].pt.x - (float)cx) / (float)fx, (ref_kp_[i].pt.y - (float)cy) / (float)fy });
                 p2.push_back({ (cur_kp_[i].pt.x - (float)cx) / (float)fx, (cur_kp_[i].pt.y - (float)cy) / (float)fy });
+                ref_kp_new.push_back(ref_kp_[i]);
+                cur_kp_new.push_back(cur_kp_[i]);
             }
         }
+
+        ref_kp_ = ref_kp_new;
+        cur_kp_ = cur_kp_new;
 
         good_cnt = 0;
         M3d R;
@@ -90,6 +92,17 @@ bool Initializer::InitializeMap(Keyframe::Ptr cur_frame, Map* map, const cv::Mat
 
         cur_frame->SetR(R);
         cur_frame->SetT(T);
+
+        std::cout << "Rotation: \n"
+                  << R << "\n";
+        std::cout << "Translation: \n"
+                  << T << "\n";
+
+        std::cout << "Points: \n";
+
+        for (const auto& p : points3d_) {
+            std::cout << p << "\n";
+        }
 
         int cnt = 0;
         for (int i = 0; i < p1.size(); ++i) {
@@ -148,14 +161,14 @@ void Initializer::OpticalFlowSingleLevel(const cv::Mat& img1, const cv::Mat& img
             V2d b = V2d::Zero();
             cost = 0;
 
-            if (kp.pt.x + dx <= half_width_size_ || kp.pt.x + dx >= img1.cols - half_width_size_ || kp.pt.y + dy <= half_width_size_ || kp.pt.y + dy >= img1.rows - half_width_size_) {
+            if (kp.pt.x + dx <= half_patch_size_ || kp.pt.x + dx >= img1.cols - half_patch_size_ || kp.pt.y + dy <= half_patch_size_ || kp.pt.y + dy >= img1.rows - half_patch_size_) {
                 succ = false;
                 break;
             }
 
             // compute cost and jacobian
-            for (int x = -half_width_size_; x < half_width_size_; ++x) {
-                for (int y = -half_width_size_; y < half_width_size_; ++y) {
+            for (int x = -half_patch_size_; x < half_patch_size_; ++x) {
+                for (int y = -half_patch_size_; y < half_patch_size_; ++y) {
                     double error = 0;
                     V2d J;
                     if (!inverse) {
@@ -445,7 +458,7 @@ void Initializer::Reconstruct(
     assert(good_cnt == points3d.size());
 }
 
-void Initializer::NormalizeDepth(V3d& T, std::vector<V3d> points3d)
+void Initializer::NormalizeDepth(V3d& T, std::vector<V3d>& points3d)
 {
     assert(points3d.size() > 0);
 
@@ -461,4 +474,18 @@ void Initializer::NormalizeDepth(V3d& T, std::vector<V3d> points3d)
     }
 
     T /= mean_depth;
+}
+
+void Initializer::Visualize(
+    const cv::Mat& display,
+    const std::vector<cv::KeyPoint>& kp1,
+    const std::vector<cv::KeyPoint>& kp2,
+    const std::vector<bool>& success,
+    const int& good_cnt)
+{
+    for (int i = 0; i < kp1.size(); i++) {
+        if (success[i]) {
+            cv::line(display, kp1[i].pt, kp2[i].pt, cv::Scalar(0, 255, 0));
+        }
+    }
 }

@@ -77,7 +77,7 @@ int main(int argc, char const* argv[])
 
     while (!pangolin::ShouldQuit()) {
         sequence.RunOnce();
-        DrawMap(&pango_state, viso.GetMap()->GetPoints3d(), viso.points_opt, viso.poses.toVector(), viso.poses_opt);
+        DrawMap(&pango_state, viso.GetMap()->GetPoints3d(), viso.points_opt, viso.poses, viso.poses_opt);
         Eigen::Quaternion<double> q(viso.last_frame->GetR());
         V3d t(viso.last_frame->GetT());
         q.normalize();
