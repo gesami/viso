@@ -4,9 +4,13 @@
 
 #include <map>
 #include <opencv2/core/eigen.hpp>
+#include <depth_filter.h>
 
 void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
 {
+    static depth_filter* filter = nullptr;
+ 
+
     // TODO: Clean this up.
     cur_frame->SetK(K);
 
@@ -22,6 +26,7 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
         if (initialized) {
             state_ = kRunning;
             BA(true, {}, {}, {});
+            filter = new depth_filter(cur_frame->GetK(), cur_frame->Mat(), cur_frame->GetKeypointsDF(), cur_frame->GetPose());
         }
     } break;
 
@@ -52,8 +57,13 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
 
         cv::imshow("Tracked", display);
         cv::waitKey(0);
-
         BA(false, cur_frame, kp_after, tracked_points);
+
+        
+        //if(filter != nullptr) {
+        //  filter->update(cur_frame->Mat(), cur_frame->GetPose());      
+        //}
+
     } break;
 
     default:
@@ -505,7 +515,7 @@ void Viso::BA(bool map_only, Keyframe::Ptr current_frame, const std::vector<V2d>
         g2o::make_unique<Block>(std::move(linearSolver)));
     g2o::SparseOptimizer optimizer; // graph optimizer
     optimizer.setAlgorithm(solver); // solver
-    optimizer.setVerbose(true); // open the output
+    optimizer.setVerbose(false); // open the output
 
     std::vector<VertexSBAPointXYZ*> points_v;
     std::vector<VertexSophus*> cameras_v;

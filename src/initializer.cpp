@@ -92,7 +92,7 @@ bool Initializer::InitializeMap(Keyframe::Ptr cur_frame, Map* map, const cv::Mat
 
         cur_frame->SetR(R);
         cur_frame->SetT(T);
-
+/*
         std::cout << "Rotation: \n"
                   << R << "\n";
         std::cout << "Translation: \n"
@@ -103,7 +103,7 @@ bool Initializer::InitializeMap(Keyframe::Ptr cur_frame, Map* map, const cv::Mat
         for (const auto& p : points3d_) {
             std::cout << p << "\n";
         }
-
+*/
         int cnt = 0;
         for (int i = 0; i < p1.size(); ++i) {
             if (track_success_[i]) {
@@ -116,6 +116,10 @@ bool Initializer::InitializeMap(Keyframe::Ptr cur_frame, Map* map, const cv::Mat
                 ++cnt;
             }
         }
+        cur_kp_.clear();
+        detector->detect(cur_frame->Mat(), cur_kp_);
+        cur_frame->setoccupied();
+        cur_frame->addnewfeature(cur_kp_);
 
         return true;
     } else {
@@ -123,7 +127,7 @@ bool Initializer::InitializeMap(Keyframe::Ptr cur_frame, Map* map, const cv::Mat
         cur_kp_.clear();
         track_success_.clear();
         //cv::FAST(cur_frame->Mat(), init_.kp1, fast_thresh);
-        cv::Ptr<cv::GFTTDetector> detector = cv::GFTTDetector::create(500, 0.01, 10);
+        //cv::Ptr<cv::GFTTDetector> detector = cv::GFTTDetector::create(500, 0.01, 10);
         detector->detect(cur_frame->Mat(), ref_kp_);
         cur_kp_ = ref_kp_;
         ref_frame_ = cur_frame;

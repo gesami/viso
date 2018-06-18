@@ -7,6 +7,7 @@
 #include <memory>
 #include <opencv2/opencv.hpp>
 #include <sophus/se3.hpp>
+#include "config.h"
 
 class Keyframe {
 private:
@@ -14,6 +15,8 @@ private:
     long id_;
 
     std::vector<cv::KeyPoint> keypoints_;
+    std::vector<cv::KeyPoint> keypoints_df_;
+        
     std::string time_;
 
     cv::Mat mat_;
@@ -21,6 +24,14 @@ private:
     V3d T_;
     M3d K_;
 
+    const int nr_pyramids_ = 4;
+    const double pyramid_scale_ = 0.5;
+    const double scales_[4] = { 1.0, 0.5, 0.25, 0.125 };
+    // Some constants.
+    int grid_row_;
+    int grid_col_;
+    int grid_size_ = Config::get<int>("grid_size");
+    std::vector<bool> grid_occupy_; //record occupied grid
     std::vector<cv::Mat> pyramids_;
 
 public:
@@ -49,6 +60,11 @@ public:
                 cv::Size(pyramids_[i - 1].cols * Keyframe::pyramid_scale, pyramids_[i - 1].rows * Keyframe::pyramid_scale));
             pyramids_.push_back(pyr);
         }
+
+        //Set grid
+        grid_col_ = ceil(static_cast<double>(mat_.cols / grid_size_));
+        grid_row_ = ceil(static_cast<double>(mat_.rows / grid_size_));
+        grid_occupy_.resize(grid_col_*grid_row_, false);
     }
 
     ~Keyframe() = default;
@@ -104,6 +120,8 @@ public:
     }
 
     inline std::vector<cv::KeyPoint>& Keypoints() { return keypoints_; }
+    inline std::vector<cv::KeyPoint>& GetKeypointsDF() { return keypoints_df_; }
+
 
     inline const cv::Mat& Mat() { return mat_; }
     inline Sophus::SE3d GetPose() { return Sophus::SE3d(R_, T_); }
@@ -133,6 +151,15 @@ public:
         keypoints_.push_back(kp);
         return keypoints_.size();
     }
+
+    inline int AddKeypointForDepthFiler(cv::KeyPoint kp)
+    {
+        keypoints_df_.push_back(kp);
+        return keypoints_df_.size();
+    }
+
+    void setoccupied();
+    void addnewfeature(std::vector<cv::KeyPoint> newfts_);
 };
 
 #endif

@@ -1,0 +1,30 @@
+%YAML:1.0
+# data
+# the tum dataset directory, change it to yours! 
+dataset_dir: .
+
+# camera intrinsics
+# fr1
+camera.fx: 517.3
+camera.fy: 516.5
+camera.cx: 325.1
+camera.cy: 249.7
+
+# fr2
+#camera.fx: 520.9
+#camera.fy: 521.0
+#camera.cx: 325.1
+#camera.cy: 249.7
+
+
+
+# VO Parameters
+number_of_features: 500
+lk_half_patch_size: 5
+lk_d2_factor: 2.25
+BA_iteration: 100
+ba_outlier_thresh: 1
+max_feature: 500
+qualityLevel: 0.01
+minDistance: 10
+grid_size: 40

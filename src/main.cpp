@@ -1,6 +1,7 @@
 
 #include "common.h"
 #include "viso.h"
+#include "config.h"
 #include <fstream>
 #include <iostream>
 #include <iostream>
@@ -18,10 +19,10 @@ static bool running = true;
 
 void DrawMap(Map* map);
 
-const double fx = 517.3;
-const double fy = 516.5;
-const double cx = 325.1;
-const double cy = 249.7;
+double fx ;
+double fy ;
+double cx ;
+double cy ;
 
 int main(int argc, char const* argv[])
 {
@@ -29,7 +30,8 @@ int main(int argc, char const* argv[])
     //
     //Process data set
     //
-    string dataset_dir(argv[1]);
+    Config::setParameterFile ( argv[1] );
+    string dataset_dir = Config::get<string>("dataset_dir");
     ifstream fin(dataset_dir + "/rgb.txt");
     if (!fin) {
         cout << "no file found!" << endl;
@@ -58,6 +60,10 @@ int main(int argc, char const* argv[])
     //
     // Run main loop.
     //
+    fx = Config::get<double>("camera.fx");
+    fy = Config::get<double>("camera.fy");
+    cx = Config::get<double>("camera.cx");
+    cy = Config::get<double>("camera.cy");
     Viso viso(fx, fy, cx, cy);
     FrameSequence sequence(&viso, rgb_files, rgb_times);
     double qx, qy, qz, qw, x, y, z;
