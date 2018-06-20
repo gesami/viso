@@ -1,7 +1,7 @@
 
 #include "common.h"
-#include "viso.h"
 #include "config.h"
+#include "viso.h"
 #include <fstream>
 #include <iostream>
 #include <iostream>
@@ -19,10 +19,10 @@ static bool running = true;
 
 void DrawMap(Map* map);
 
-double fx ;
-double fy ;
-double cx ;
-double cy ;
+double fx;
+double fy;
+double cx;
+double cy;
 
 int main(int argc, char const* argv[])
 {
@@ -30,7 +30,7 @@ int main(int argc, char const* argv[])
     //
     //Process data set
     //
-    Config::setParameterFile ( argv[1] );
+    Config::setParameterFile(argv[1]);
     string dataset_dir = Config::get<string>("dataset_dir");
     ifstream fin(dataset_dir + "/rgb.txt");
     if (!fin) {
@@ -138,12 +138,12 @@ void DrawMap(Map* map)
         const float sz = 0.1;
         const int width = 640, height = 480;
 
-        auto draw_poses = [&](const std::vector<Sophus::SE3d>& poses) {
+        auto draw_poses = [&](const std::vector<Sophus::SE3d>& poses, double r, double g, double b) {
             for (auto& Tcw : poses) {
                 glPushMatrix();
                 Sophus::Matrix4f m = Tcw.inverse().matrix().cast<float>();
                 glMultMatrixf((GLfloat*)m.data());
-                glColor3f(0, 0, 1);
+                glColor3f(r, g, b);
                 glLineWidth(2);
                 glBegin(GL_LINES);
                 glVertex3f(0, 0, 0);
@@ -167,7 +167,12 @@ void DrawMap(Map* map)
             }
         };
 
-        draw_poses(poses);
+        draw_poses(map->GetLastPoses(), 0, 1, 1);
+        draw_poses(poses, 0, 0, 0.7);
+
+        if (auto current = map->GetCurrent()) {
+            draw_poses({ current->GetPose() }, 1, 0, 0);
+        }
         //draw_poses(poses_opt);
 
         pangolin::FinishFrame();

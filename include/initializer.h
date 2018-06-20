@@ -16,10 +16,6 @@ public:
     bool InitializeMap(Keyframe::Ptr cur_frame, Map* map, const cv::Mat& display);
 
 private:
-    int max_feature = Config::get<int>("max_feature");
-    double qualityLevel= Config::get<double>("qualityLevel");
-    double minDistance = Config::get<double>("minDistance");
-    cv::Ptr<cv::GFTTDetector> detector = cv::GFTTDetector::create(max_feature, qualityLevel, minDistance); // maximum 500 keypoints
     void OpticalFlowSingleLevel(const cv::Mat& img1, const cv::Mat& img2,
         const std::vector<cv::KeyPoint>& kp1,
         std::vector<cv::KeyPoint>& kp2,

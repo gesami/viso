@@ -158,8 +158,8 @@ public:
         return keypoints_df_.size();
     }
 
-    void setoccupied();
-    void addnewfeature(std::vector<cv::KeyPoint> newfts_);
+    void SetOccupied();
+    void AddNewFeatures(std::vector<cv::KeyPoint> newfts);
 };
 
 #endif

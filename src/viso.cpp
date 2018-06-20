@@ -2,21 +2,19 @@
 #include "common.h"
 #include "timer.h"
 
+#include <depth_filter.h>
 #include <map>
 #include <opencv2/core/eigen.hpp>
-#include <depth_filter.h>
 
 void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
 {
     static depth_filter* filter = nullptr;
- 
 
     // TODO: Clean this up.
     cur_frame->SetK(K);
 
     switch (state_) {
     case kInitialization: {
-
         // Visualization
         cv::Mat img;
         cv::cvtColor(cur_frame->Mat(), img, CV_GRAY2BGR);
@@ -37,6 +35,8 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
         cur_frame->SetR(X.rotationMatrix());
         cur_frame->SetT(X.translation());
 
+        map_.SetCurrent(cur_frame);
+
         std::vector<V2d> kp_before, kp_after;
         std::vector<int> tracked_points;
         LKAlignment(cur_frame, kp_before, kp_after, tracked_points);
@@ -56,12 +56,25 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
         }
 
         cv::imshow("Tracked", display);
-        cv::waitKey(0);
-        BA(false, cur_frame, kp_after, tracked_points);
+        cv::waitKey(10);
 
-        
+
+        if (IsKeyframe(cur_frame)) {
+            std::vector<cv::KeyPoint> kp;
+            map_.AddKeyframe(cur_frame);
+            featureDetector->detect(cur_frame->Mat(), kp);
+            cur_frame->SetOccupied();
+            cur_frame->AddNewFeatures(kp);
+
+            // TODO: What else do we have to do here?
+
+            std::cout << "New keyframe added!\n";
+        }
+
+        //BA(false, cur_frame, kp_after, tracked_points);
+
         //if(filter != nullptr) {
-        //  filter->update(cur_frame->Mat(), cur_frame->GetPose());      
+        //  filter->update(cur_frame->Mat(), cur_frame->GetPose());
         //}
 
     } break;
@@ -621,4 +634,31 @@ void Viso::BA(bool map_only, Keyframe::Ptr current_frame, const std::vector<V2d>
         map_.GetPoints()[i]->SetWorldPos(point_opt);
         //points_opt.push_back(point_opt);
     }
+}
+
+bool Viso::IsKeyframe(Keyframe::Ptr cur_frame)
+{
+    V3d last_T = map_.GetLastPose().translation();
+    V3d cur_T = cur_frame->GetT();
+    V3d delta_T = (cur_T - last_T);
+
+    double distance = delta_T.norm();
+
+    if (distance > new_kf_dist_thresh) {
+        std::cout << "IsKeyframe distance: " << distance << "\n";
+        return true;
+    }
+
+    M3d last_R = map_.GetLastPose().rotationMatrix();
+    M3d cur_R = cur_frame->GetR();
+    M3d delta_R = cur_R.transpose() * last_R;
+
+    double angle = std::abs(std::acos((delta_R(0, 0) + delta_R(1, 1) + delta_R(2, 2) - 1) * 0.5));
+
+    if (angle > new_kf_angle_thresh) {
+        std::cout << "IsKeyframe angle: " << angle << "\n";
+        return true;
+    }
+
+    return false;
 }

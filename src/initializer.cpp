@@ -8,13 +8,15 @@
 Initializer::Initializer()
 {
     frame_cnt_ = 0;
-    reset_after_ = 20;
-    iterations_ = 10;
-    half_patch_size_ = 10;
-    photometric_thresh_ = (half_patch_size_ * 2) * (half_patch_size_ * 2) * 15 * 15; // squared error for the whole patch, 15 gray values per pixel
-    min_good_cnt_ = 100;
-    disparity2_thresh_ = 35 * 35; // squared, 15 pixels
-    reprojection_thresh_ = 0.3;
+    reset_after_ = Config::get<int>("reset_after");
+    iterations_ = Config::get<int>("iterations");
+    half_patch_size_ = Config::get<int>("half_patch_size");
+    photometric_thresh_ = Config::get<double>("photometric_thresh");
+    photometric_thresh_ = (half_patch_size_ * 2) * (half_patch_size_ * 2) * photometric_thresh_ * photometric_thresh_; // squared error for the whole patch, 15 gray values per pixel
+    min_good_cnt_ = Config::get<int>("min_good_cnt");
+    disparity2_thresh_ = Config::get<double>("disparity_thresh");
+    disparity2_thresh_ = disparity2_thresh_ * disparity2_thresh_;
+    reprojection_thresh_ = Config::get<double>("reprojection_thresh");
 }
 
 bool Initializer::InitializeMap(Keyframe::Ptr cur_frame, Map* map, const cv::Mat& display)
@@ -92,7 +94,7 @@ bool Initializer::InitializeMap(Keyframe::Ptr cur_frame, Map* map, const cv::Mat
 
         cur_frame->SetR(R);
         cur_frame->SetT(T);
-/*
+        /*
         std::cout << "Rotation: \n"
                   << R << "\n";
         std::cout << "Translation: \n"
@@ -117,9 +119,8 @@ bool Initializer::InitializeMap(Keyframe::Ptr cur_frame, Map* map, const cv::Mat
             }
         }
         cur_kp_.clear();
-        detector->detect(cur_frame->Mat(), cur_kp_);
-        cur_frame->setoccupied();
-        cur_frame->addnewfeature(cur_kp_);
+        cur_frame->SetOccupied();
+        cur_frame->AddNewFeatures(cur_kp_);
 
         return true;
     } else {
@@ -127,7 +128,7 @@ bool Initializer::InitializeMap(Keyframe::Ptr cur_frame, Map* map, const cv::Mat
         cur_kp_.clear();
         track_success_.clear();
         //cv::FAST(cur_frame->Mat(), init_.kp1, fast_thresh);
-        //cv::Ptr<cv::GFTTDetector> detector = cv::GFTTDetector::create(500, 0.01, 10);
+        cv::Ptr<cv::GFTTDetector> detector = cv::GFTTDetector::create(500, 0.01, 10);
         detector->detect(cur_frame->Mat(), ref_kp_);
         cur_kp_ = ref_kp_;
         ref_frame_ = cur_frame;

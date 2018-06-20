@@ -8,23 +8,34 @@
 #include <vector>
 
 template <int N, typename T>
-class RingBuffer {
+class ring_buffer {
 public:
-    RingBuffer()
+    ring_buffer()
         : end_(0)
         , size_(0)
     {
         ring_.resize(N);
     }
 
-    inline void Push(T t)
+    ring_buffer(ring_buffer& rhs) = delete;
+    ring_buffer(const ring_buffer& rhs) = delete;
+    ring_buffer(volatile ring_buffer& rhs) = delete;
+    ring_buffer(const volatile ring_buffer& rhs) = delete;
+    ring_buffer(ring_buffer&& rhs) = delete;
+
+    inline void push(T t)
     {
         ring_[end_] = t;
         end_ = (end_ + 1) % N;
         size_ = std::min(size_ + 1, N);
     }
 
-    inline int GetSize() { return size_; }
+    inline int size() { return size_; }
+    inline T last()
+    {
+        assert(size() > 0);
+        return this->operator[](size() - 1);
+    }
 
     inline T operator[](int index)
     {
@@ -35,9 +46,9 @@ public:
         return ring_[(start + index) % N];
     }
 
-    std::vector<T> toVector()
+    std::vector<T> to_vector()
     {
-        std::vector<T> vec(GetSize());
+        std::vector<T> vec(size());
         for (int i = 0; i < vec.size(); ++i) {
             vec[i] = this->operator[](i);
         }

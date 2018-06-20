@@ -3,7 +3,9 @@
 
 #include "keyframe.h"
 #include "map_point.h"
+#include "ring_buffer.h"
 #include "types.h"
+
 #include <mutex>
 
 #define LOCK() std::lock_guard<std::mutex> lock(mut_)
@@ -14,6 +16,9 @@ private:
     std::vector<MapPoint::Ptr> points_;
     std::mutex mut_;
 
+    ring_buffer<3, Keyframe::Ptr> last_keyframes_;
+    Keyframe::Ptr current_frame_;
+
 public:
     Map() = default;
     ~Map() = default;
@@ -22,6 +27,7 @@ public:
     {
         LOCK();
         keyframes_.push_back(keyframe);
+        last_keyframes_.push(keyframe);
     }
 
     inline void AddPoint(MapPoint::Ptr map_point)
@@ -34,6 +40,17 @@ public:
     {
         LOCK();
         return keyframes_;
+    }
+
+    inline std::vector<Sophus::SE3d> GetLastPoses()
+    {
+        LOCK();
+        std::vector<Sophus::SE3d> poses;
+        poses.reserve(last_keyframes_.size());
+        for (int i = 0; i < last_keyframes_.size(); ++i) {
+            poses.push_back(last_keyframes_[i]->GetPose());
+        }
+        return poses;
     }
 
     inline std::vector<MapPoint::Ptr> GetPoints()
@@ -62,6 +79,26 @@ public:
             poses.push_back(kf->GetPose());
         }
         return poses;
+    }
+
+    inline Sophus::SE3d GetLastPose()
+    {
+        LOCK();
+        if (last_keyframes_.size() == 0) {
+            return Sophus::SE3d();
+        }
+
+        return last_keyframes_.last()->GetPose();
+    }
+
+    inline void SetCurrent(Keyframe::Ptr cur_frame)
+    {
+        current_frame_ = cur_frame;
+    }
+
+    inline Keyframe::Ptr GetCurrent()
+    {
+        return current_frame_;
     }
 };
 

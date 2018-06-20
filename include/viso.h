@@ -3,11 +3,11 @@
 #define VISO_VISO_H
 
 #include "bundle_adjuster.h"
+#include "config.h"
 #include "frame_sequence.h"
 #include "keyframe.h"
 #include "map.h"
 #include "ring_buffer.h"
-#include "config.h"
 #include <initializer.h>
 #include <sophus/se3.hpp>
 #include <tuple>
@@ -25,6 +25,14 @@ private:
     double lk_d2_factor = Config::get<double>("lk_d2_factor"); // deviation of median disparity
     int BA_iteration = Config::get<int>("BA_iteration");
     double ba_outlier_thresh = Config::get<double>("ba_outlier_thresh"); // deviation of median disparity
+
+    const int max_feature = Config::get<int>("max_feature");
+    const double qualityLevel = Config::get<double>("qualityLevel");
+    const double minDistance = Config::get<double>("minDistance");
+
+    const double new_kf_dist_thresh = Config::get<double>("new_kf_dist_thresh");
+    const double new_kf_angle_thresh = Config::get<double>("new_kf_angle_thresh");
+
     //const int lk_half_patch_size = 5;
     //const double lk_photometric_thresh = (lk_half_patch_size * 2) * (lk_half_patch_size * 2) * 15 * 15;
     //const double lk_d2_factor = 1.5 * 1.5; // deviation of median disparity
@@ -36,6 +44,9 @@ private:
     Initializer initializer;
     Map map_;
     State state_;
+
+
+    cv::Ptr<cv::GFTTDetector> featureDetector = cv::GFTTDetector::create(max_feature, qualityLevel, minDistance);
 
 public:
     Viso(double fx, double fy, double cx, double cy)
@@ -79,6 +90,7 @@ private:
     void LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before, std::vector<V2d>& kp_after, std::vector<int>& tracked_points);
     void LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool>& success, std::vector<V2d>& kp, int level);
     void BA(bool map_only, Keyframe::Ptr current_frame, const std::vector<V2d>& kp, const std::vector<int>& tracked_points);
+    bool IsKeyframe(Keyframe::Ptr keyframe);
 };
 
 #endif
