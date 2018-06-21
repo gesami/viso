@@ -2,13 +2,13 @@
 #include "common.h"
 #include "timer.h"
 
-#include <depth_filter.h>
+//#include <depth_filter.h>
 #include <map>
 #include <opencv2/core/eigen.hpp>
 
 void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
 {
-    static depth_filter* filter = nullptr;
+    //static depth_filter* filter = nullptr;
 
     // TODO: Clean this up.
     cur_frame->SetK(K);
@@ -24,7 +24,7 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
         if (initialized) {
             state_ = kRunning;
             BA(true, {}, {}, {});
-            filter = new depth_filter(cur_frame->GetK(), cur_frame->Mat(), cur_frame->GetKeypointsDF(), cur_frame->GetPose());
+            //filter = new depth_filter(cur_frame->GetK(), cur_frame->Mat(), cur_frame->GetKeypointsDF(), cur_frame->GetPose());
         }
     } break;
 
@@ -62,6 +62,7 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
         if (IsKeyframe(cur_frame)) {
             std::vector<cv::KeyPoint> kp;
             map_.AddKeyframe(cur_frame);
+            //BA_KEY();
             featureDetector->detect(cur_frame->Mat(), kp);
             cur_frame->SetOccupied();
             cur_frame->AddNewFeatures(kp);
@@ -625,6 +626,106 @@ void Viso::BA(bool map_only, Keyframe::Ptr current_frame, const std::vector<V2d>
         poses.push_back(current_frame->GetPose());
         current_frame->SetPose(pose->estimate());
         poses_opt.push_back(pose->estimate());
+    }
+
+    points_opt.clear();
+    for (int i = 0; i < map_.GetPoints().size(); i++) {
+        VertexSBAPointXYZ* point = dynamic_cast<VertexSBAPointXYZ*>(optimizer.vertex(i));
+        V3d point_opt = point->estimate();
+        map_.GetPoints()[i]->SetWorldPos(point_opt);
+        //points_opt.push_back(point_opt);
+    }
+}
+
+
+void Viso::BA_KEY()
+{
+    using KernelType = g2o::RobustKernelHuber;
+
+    std::cout << "start BA for only keyframes" << std::endl;
+    // build optimization problem
+    // setup g2o
+    typedef g2o::BlockSolver<g2o::BlockSolverTraits<6, 3> > Block; // pose is 6x1, landmark is 3x1
+    std::unique_ptr<Block::LinearSolverType> linearSolver(
+        new g2o::LinearSolverDense<Block::PoseMatrixType>()); // linear solver
+
+    // use levernberg-marquardt here (or you can choose gauss-newton)
+    g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(
+        g2o::make_unique<Block>(std::move(linearSolver)));
+    g2o::SparseOptimizer optimizer; // graph optimizer
+    optimizer.setAlgorithm(solver); // solver
+    optimizer.setVerbose(false); // open the output
+
+    std::vector<VertexSBAPointXYZ*> points_v;
+    std::vector<VertexSophus*> cameras_v;
+    int id = 0;
+    int tracked_idx = 0;
+
+    for (size_t i = 0; i < map_.GetPoints().size(); i++, id++) { //for each mappoint
+        MapPoint::Ptr mp = map_.GetPoints()[i];
+        VertexSBAPointXYZ* p = new VertexSBAPointXYZ();
+        p->setId(id);
+        p->setMarginalized(true);
+        p->setEstimate(mp->GetWorldPos());
+        optimizer.addVertex(p);
+        points_v.push_back(p);
+    }
+
+    std::vector<Keyframe::Ptr> keyframes = map_.LastKeyframes();
+    std::map<int, int> keyframe_indices;
+
+    for (size_t i = 0; i < keyframes.size(); i++, id++) {
+        VertexSophus* cam = new VertexSophus();
+        cam->setId(id);
+        if (i < 1) {
+            cam->setFixed(true); //fix the pose of the first frame
+        }
+        cam->setEstimate(keyframes[i]->GetPose());
+        optimizer.addVertex(cam);
+        cameras_v.push_back(cam);
+        keyframe_indices.insert({ keyframes[i]->GetId(), i });
+        cout << "add " << keyframes[i]->GetId() << "frames" << endl;
+    }
+
+    for (size_t i = 0; i < map_.GetPoints().size(); i++) {
+        //std::cout << i << "th mappint" << std::endl;
+        MapPoint::Ptr mp = map_.GetPoints()[i];
+        for (size_t j = 0; j < mp->GetObservations().size(); j++, id++) { //for each observation
+            std::pair<Keyframe::Ptr, int> obs = mp->GetObservations()[j];
+            std::map<int, int>::iterator find_idx = keyframe_indices.find(obs.first->GetId());
+            if(find_idx!= keyframe_indices.end()){ //add edges if the observation exist in the lastest keyframe 
+                cout << "map points was observed by " << obs.first->GetId() << "frames" << endl;
+                EdgeObservation* e = new EdgeObservation(K);
+                e->setVertex(0, points_v[i]);
+                e->setVertex(1, cameras_v[find_idx->second]);
+                e->setInformation(Eigen::Matrix2d::Identity()); //intensity is a scale?
+                int idx = obs.second;
+                V2d xy(obs.first->Keypoints()[idx].pt.x, obs.first->Keypoints()[idx].pt.y);
+                e->setMeasurement(xy);
+                e->setId(id);
+                KernelType* robustKernel = new KernelType();
+                robustKernel->setDelta(ba_outlier_thresh);
+                e->setRobustKernel(robustKernel);
+                optimizer.addEdge(e);
+            }
+        }
+    }
+
+    // perform optimization
+    std::cout << "optimize!" << std::endl;
+    optimizer.initializeOptimization(0);
+    optimizer.optimize(BA_iteration);
+    std::cout << "end!" << std::endl;
+
+    poses_opt.clear();
+    poses.clear();
+    for (int i = 0; i < keyframes.size(); i++) {
+        VertexSophus* pose = dynamic_cast<VertexSophus*>(optimizer.vertex(map_.GetPoints().size() + i));
+        Sophus::SE3d p_opt = pose->estimate();
+
+        poses.push_back(keyframes[i]->GetPose());
+        keyframes[i]->SetPose(p_opt);
+        poses_opt.push_back(p_opt);
     }
 
     points_opt.clear();

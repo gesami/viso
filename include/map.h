@@ -42,6 +42,12 @@ public:
         return keyframes_;
     }
 
+    inline std::vector<Keyframe::Ptr> LastKeyframes()
+    {
+        LOCK();
+        return last_keyframes_.to_vector();
+    }
+
     inline std::vector<Sophus::SE3d> GetLastPoses()
     {
         LOCK();
