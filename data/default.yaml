@@ -38,5 +38,5 @@ disparity_thresh: 25.0
 reprojection_thresh: 0.3
 
 # new keyframe
-new_kf_dist_thresh: 0.12
+new_kf_dist_thresh: 0.2
 new_kf_angle_thresh: 0.3
