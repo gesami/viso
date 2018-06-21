@@ -94,8 +94,6 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
             std::cout << "New keyframe added!\n";
 
             BA(true, 2, {}, {}, {});
-
-            cv::waitKey(0);
         }
 
     } break;
