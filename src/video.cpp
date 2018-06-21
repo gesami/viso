@@ -1,6 +1,9 @@
 
 #include "common.h"
 #include "config.h"
+#include "frame_sequence.h"
+#include "keyframe.h"
+#include "opencv2/highgui/highgui.hpp"
 #include "viso.h"
 #include <fstream>
 #include <iostream>
@@ -8,16 +11,15 @@
 #include <pangolin/pangolin.h>
 #include <thread>
 #include <vector>
-#include "opencv2/highgui/highgui.hpp"
-#include "frame_sequence.h"
-#include "keyframe.h"
 
 using namespace std;
 using namespace cv;
+
 class VideoHandler {
-    public:
-        virtual void OnNewFrame(Keyframe::Ptr keyframe) = 0;
+public:
+    virtual void OnNewFrame(Keyframe::Ptr keyframe) = 0;
 };
+
 struct PangoState {
     pangolin::OpenGlRenderState s_cam;
     pangolin::View d_cam;
@@ -42,7 +44,7 @@ int main(int argc, char const* argv[])
     string dataset_dir = Config::get<string>("dataset_dir");
     VideoCapture cap(0); // open the video camera no. 0
 
-    if (!cap.isOpened())  // if not success, exit program
+    if (!cap.isOpened()) // if not success, exit program
     {
         cout << "Cannot open the video cam" << endl;
         return -1;
@@ -56,23 +58,26 @@ int main(int argc, char const* argv[])
     cx = Config::get<double>("camera.cx");
     cy = Config::get<double>("camera.cy");
     Viso viso(fx, fy, cx, cy);
-    VideoHandler* handler_;
+    VideoHandler* handler_ = 0;
     double qx, qy, qz, qw, x, y, z;
     ofstream out(dataset_dir + "/estimation.txt");
 
     std::thread ui_thread(&DrawMap, viso.GetMap());
 
     while (running) {
-        Mat frame;
-        bool bSuccess = cap.read(frame); // read a new frame from video
+        Mat frame_color;
+        bool bSuccess = cap.read(frame_color); // read a new frame from video
         if (!bSuccess) //if not success, break loop
         {
-             cout << "Cannot read a frame from video stream" << endl;
-             break;
+            cout << "Cannot read a frame from video stream" << endl;
+            break;
         }
+
+        Mat frame;
+        cvtColor(frame_color, frame, CV_BGR2GRAY);
         double tp = cap.get(CV_CAP_PROP_POS_MSEC);
-        std::string str = std::to_string(tp); 
-        handler_->OnNewFrame(std::make_shared<Keyframe>(frame, str ));
+        std::string str = std::to_string(tp);
+        viso.OnNewFrame(std::make_shared<Keyframe>(frame, str));
         //FrameSequence::FrameHandler* handler_->OnNewFrame(std::make_shared<Keyframe>(frame, (string) cap.get( CV_CAP_PROP_POS_MEC) ));
         Eigen::Quaternion<double> q(viso.last_frame->GetR());
         V3d t(viso.last_frame->GetT());
