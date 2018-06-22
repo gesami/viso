@@ -74,11 +74,6 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
 
             std::vector<cv::KeyPoint> kp;
             map_.AddKeyframe(cur_frame);
-            //BA_KEY();
-            featureDetector->detect(cur_frame->Mat(), kp);
-            cur_frame->SetOccupied();
-            cur_frame->AddNewFeatures(kp);
-
             vector<MapPoint::Ptr> map_points = map_.GetPoints();
 
             for (int i = 0; i < tracked_points.size(); ++i) {
@@ -88,6 +83,12 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
                 int kp_idx = cur_frame->AddKeypoint(kp);
                 map_points[tracked_points[i]]->AddObservation(cur_frame, kp_idx);
             }
+            //BA_KEY();
+            featureDetector->detect(cur_frame->Mat(), kp);
+            cur_frame->SetOccupied(map_.GetPoints3d());
+            cur_frame->AddNewFeatures(kp);
+
+            
 
             // TODO: What else do we have to do here?
             if (filter == nullptr) {

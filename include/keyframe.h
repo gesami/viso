@@ -158,7 +158,7 @@ public:
         return keypoints_df_.size();
     }
 
-    void SetOccupied();
+    void SetOccupied(std::vector<V3d> mp);
     void AddNewFeatures(std::vector<cv::KeyPoint> newfts);
 };
 

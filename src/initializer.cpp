@@ -121,7 +121,7 @@ bool Initializer::InitializeMap(Keyframe::Ptr cur_frame, viso::Map* map, const c
         cur_kp_.clear();
         cv::Ptr<cv::GFTTDetector> featureDetector = cv::GFTTDetector::create(500, 0.01, 10);
         featureDetector->detect(cur_frame->Mat(), cur_kp_);
-        cur_frame->SetOccupied();
+        cur_frame->SetOccupied(map->GetPoints3d());
         cur_frame->AddNewFeatures(cur_kp_);
 
         return true;
