@@ -64,7 +64,7 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
                 filter = nullptr;
             } else {
                 filter->Update(cur_frame);
-                //filter->UpdateMap(&map_);
+                filter->UpdateMap(&map_);
             }
         }
 
