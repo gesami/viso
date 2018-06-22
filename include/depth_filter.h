@@ -33,7 +33,7 @@ class depth_filter {
     const double min_cov = 0.1; // convergence determination: minimum variance
     const double max_cov = 10; // divergence determination: maximum variance
 
-    const int max_iterations = 5;
+    const int max_iterations = 10;
 
     double fx;
     double fy;
@@ -104,7 +104,7 @@ public:
         ++current_iteration_;
 
         SE3d pose_curr_TWC = cur_frame->GetPose();
-        SE3d pose_T_C_R = ref_frame_->GetPose() * pose_curr_TWC; // change world coordinate： T_C_W * T_W_R = T_C_R
+        SE3d pose_T_C_R = ref_frame_->GetPose().inverse() * pose_curr_TWC; // change world coordinate： T_C_W * T_W_R = T_C_R
         // plot the search process for each point
         for (int i = 0; i < kp_.size(); ++i) {
             if (status_[i] != 0) {

@@ -104,6 +104,9 @@ using namespace g2o;
             _error(0,0) = u-_measurement[0];
             _error(1,0) = v-_measurement[1];
 
+            assert (!std::isnan(u));
+            assert (!std::isnan(v));
+
         }
         virtual bool read(std::istream& /*is*/)
         {

@@ -17,7 +17,7 @@ private:
     std::vector<MapPoint::Ptr> points_;
     std::mutex mut_;
 
-    ring_buffer<3, Keyframe::Ptr> last_keyframes_;
+    ring_buffer<10, Keyframe::Ptr> last_keyframes_;
     Keyframe::Ptr current_frame_;
 
 public:
@@ -42,6 +42,12 @@ public:
     {
         LOCK();
         return keyframes_;
+    }
+
+    inline std::vector<Keyframe::Ptr> LastKeyframes()
+    {
+        LOCK();
+        return last_keyframes_.to_vector();
     }
 
     inline std::vector<Sophus::SE3d> GetLastPoses()
@@ -104,4 +110,5 @@ public:
     }
 };
 }
+
 #endif
