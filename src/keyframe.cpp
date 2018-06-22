@@ -14,9 +14,9 @@ void Keyframe::SetOccupied()
     for (auto& kp : keypoints_) {
         int x = static_cast<int>(kp.pt.x / grid_size_);
         int y = static_cast<int>(kp.pt.y / grid_size_);
-        for(int u=-1; u<2; u++){
-            for(int v=-1; v<2; v++){
-                grid_occupy_.at((y+v) * grid_col_+ (x+u))= true;
+        for (int u = -1; u < 2; u++) {
+            for (int v = -1; v < 2; v++) {
+                grid_occupy_.at((y + v) * grid_col_ + (x + u)) = true;
             }
         }
         /*grid_occupy_.at(
@@ -28,12 +28,12 @@ void Keyframe::SetOccupied()
 
 void Keyframe::AddNewFeatures(std::vector<cv::KeyPoint> newfts)
 {
-        /*std::cout << "add new feature!" << std::endl;
-        cv::Mat display;
-        cv::cvtColor(mat_, display, CV_GRAY2BGR);
-        for (auto& kp : keypoints_) {
-            cv::circle(display, kp.pt, 2, cv::Scalar(0, 250, 0), 2);
-        }*/
+    std::cout << "add new feature!" << std::endl;
+    cv::Mat display;
+    cv::cvtColor(mat_, display, CV_GRAY2BGR);
+    for (auto& kp : keypoints_) {
+        cv::circle(display, kp.pt, 2, cv::Scalar(0, 250, 0), 2);
+    }
 
     int cnt = 0;
     for (auto& kp : newfts) {
@@ -43,11 +43,12 @@ void Keyframe::AddNewFeatures(std::vector<cv::KeyPoint> newfts)
             == false) {
             cnt++;
             AddKeypointForDepthFiler(kp);
-            //cv::circle(display, kp.pt, 2, cv::Scalar(0, 0, 250), 2);
+            grid_occupy_.at(static_cast<int>(kp.pt.y / grid_size_) * grid_col_ + static_cast<int>(kp.pt.x / grid_size_)) = true;
+            cv::circle(display, kp.pt, 2, cv::Scalar(0, 0, 250), 2);
         }
     }
 
-    		/*std::cout << "cnt new feature: " << cnt << std::endl;
-    		cv::imshow("add new feature", display);
-            cv::waitKey(0);*/
+    std::cout << "cnt new feature: " << cnt << std::endl;
+    cv::imshow("add new feature", display);
+    cv::waitKey(0);
 }

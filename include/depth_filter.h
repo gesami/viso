@@ -30,9 +30,10 @@ class depth_filter {
 
     const int ncc_window_size = 7; // NCC half window size
     const int ncc_area = (2 * ncc_window_size + 1) * (2 * ncc_window_size + 1); // NCC window area
-    const double min_cov = 0.1; // convergence determination: minimum variance
+    const double min_cov = 0.01; // convergence determination: minimum variance
     const double max_cov = 10; // divergence determination: maximum variance
 
+    const double reprojection_thresh_ = Config::get<double>("reprojection_thresh");
     const int max_iterations = 10;
 
     double fx;
@@ -47,6 +48,8 @@ private:
     std::vector<double> depths_cov_;
     std::vector<int> status_;
     int current_iteration_;
+
+    Keyframe::Ptr cur_frame_;
 
 public:
     depth_filter(Keyframe::Ptr ref_frame)
@@ -66,7 +69,7 @@ public:
         status_.resize(nr_keypoints);
 
         for (int i = 0; i < nr_keypoints; ++i) {
-            depths_[i] = 3.0;
+            depths_[i] = 1.0;
             depths_cov_[i] = 5.0;
             status_[i] = 0;
         }
@@ -101,10 +104,12 @@ public:
             return;
         }
 
+        cur_frame_ = cur_frame;
+
         ++current_iteration_;
 
         SE3d pose_curr_TWC = cur_frame->GetPose();
-        SE3d pose_T_C_R = ref_frame_->GetPose().inverse() * pose_curr_TWC; // change world coordinate： T_C_W * T_W_R = T_C_R
+        SE3d pose_T_C_R = pose_curr_TWC * ref_frame_->GetPose().inverse(); // change world coordinate： T_C_W * T_W_R = T_C_R
         // plot the search process for each point
         for (int i = 0; i < kp_.size(); ++i) {
             if (status_[i] != 0) {
@@ -164,14 +169,7 @@ private:
 
         // int x = 250; int y = 250;
         // judge the covariance of the point
-        if (depth_cov < min_cov) {
-            cout << " depth converged " << endl;
-            return 1;
-        };
-        if (depth_cov > max_cov) {
-            cout << " depth  divergered " << endl;
-            return -1;
-        }
+
         // continue;
         // search the match in polar line
         Vector2d pt_curr;
@@ -186,7 +184,7 @@ private:
             show);
 
         if (ret == false) { // matching fails
-            cout << " matching fails " << endl;
+            //cout << " matching fails " << endl;
             return -1;
         }
         // continue;
@@ -197,9 +195,32 @@ private:
 
         // match successful, update the depth filter
         updateDepthFilter(Vector2d(x, y), pt_curr, T_C_R, depth, depth_cov);
-        cout << " after updating depth is " << depth << endl;
-        cout << " after updating convariance is " << depth_cov << endl;
+//        cout << " after updating depth is " << depth << endl;
+//        cout << " after updating convariance is " << depth_cov << endl;
         // }
+
+        if (depth_cov < min_cov) {
+            V3d P = ref_frame_->GetPose().inverse() * (depth * px2cam({x, y }));
+            V2d proj_to_cur = cur_frame_->Project(P, 0);
+
+            double dx = proj_to_cur.x() - pt_curr.x();
+            double dy = proj_to_cur.y() - pt_curr.y();
+            double proj_error = std::sqrt(dx * dx + dy * dy);
+
+            if(proj_error > 3 * reprojection_thresh_) {
+              cout << " depth outlier " << endl;
+              return -1;
+            }
+
+            cout << " depth converged " << endl;
+
+            return 1;
+        };
+
+        if (depth_cov > max_cov) {
+            cout << " depth  divergered " << endl;
+            return -1;
+        }
 
         return 0;
     }

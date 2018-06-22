@@ -65,7 +65,7 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
                 filter = nullptr;
             } else {
                 filter->Update(cur_frame);
-                //filter->UpdateMap(&map_);
+                filter->UpdateMap(&map_);
             }
         }
 
@@ -91,12 +91,12 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
 
             // TODO: What else do we have to do here?
             if (filter == nullptr) {
-                //filter = new depth_filter(cur_frame);
+                filter = new depth_filter(cur_frame);
             }
             std::cout << "New keyframe added!\n";
 
-            //BA(true, 2, {}, {}, {});
-            BA_KEY();
+            BA(true, 2, {}, {}, {});
+            //BA_KEY();
         }
 
     } break;
@@ -390,6 +390,9 @@ void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before,
             best_frame_idx = j;
             best_uv_ref = V2d{ frame->Keypoints()[observations[j].second].pt.x, frame->Keypoints()[observations[j].second].pt.y };
             best_keyframe = frame;
+
+            // For now take the first observation.
+            break;
         }
 
         if (best_frame_idx == -1) {
@@ -658,7 +661,6 @@ void Viso::BA(bool map_only, int fix_cnt, Keyframe::Ptr current_frame, const std
     }
 }
 
-
 void Viso::BA_KEY()
 {
     using KernelType = g2o::RobustKernelTukey;
@@ -712,16 +714,16 @@ void Viso::BA_KEY()
 
     bool point_obs;
     vector<int> pvertex_id;
-    vector<vector<pair<int, V2d>>> obsvector;
+    vector<vector<pair<int, V2d> > > obsvector;
     for (size_t i = 0; i < map_.GetPoints().size(); i++) {
         MapPoint::Ptr mp = map_.GetPoints()[i];
         point_obs = false;
-        vector<pair<int, V2d>> pobs;
+        vector<pair<int, V2d> > pobs;
         for (size_t j = 0; j < mp->GetObservations().size(); j++) { //for each observation
             std::pair<Keyframe::Ptr, int> obs = mp->GetObservations()[j];
             std::map<int, int>::iterator find_idx = keyframe_indices.find(obs.first->GetId());
-            if(find_idx!= keyframe_indices.end()){ //add edges if the observation exist in the lastest keyframe
-                if(!point_obs){ //add point vertex if the point is observed in the lastest keyframe
+            if (find_idx != keyframe_indices.end()) { //add edges if the observation exist in the lastest keyframe
+                if (!point_obs) { //add point vertex if the point is observed in the lastest keyframe
                     VertexSBAPointXYZ* p = new VertexSBAPointXYZ();
                     p->setId(id);
                     p->setMarginalized(true);
@@ -736,13 +738,13 @@ void Viso::BA_KEY()
                 pobs.push_back({ find_idx->second, xy });
             }
         }
-        if(point_obs){
+        if (point_obs) {
             obsvector.push_back(pobs);
             pvertex_id.push_back(i);
         }
     }
-    for(int i=0; i< pvertex_id.size();i++){
-        for(int j=0; j<obsvector[i].size();j++){
+    for (int i = 0; i < pvertex_id.size(); i++) {
+        for (int j = 0; j < obsvector[i].size(); j++) {
             cout << "add edge for " << obsvector[i][j].first << " th frame and measurement: " << obsvector[i][j].second.transpose() << endl;
             EdgeObservation* e = new EdgeObservation(K);
             e->setVertex(0, points_v[i]);
@@ -762,7 +764,6 @@ void Viso::BA_KEY()
     optimizer.optimize(BA_iteration);
     std::cout << "end!" << std::endl;
 
-
     for (int i = 0; i < keyframes.size(); i++) {
         VertexSophus* pose = dynamic_cast<VertexSophus*>(optimizer.vertex(i));
         Sophus::SE3d p_opt = pose->estimate();
@@ -775,8 +776,8 @@ void Viso::BA_KEY()
         //points_opt.push_back(point_opt);
     }*/
     for (int i = 0; i < points_v.size(); i++) {
-      VertexSBAPointXYZ* point = dynamic_cast<VertexSBAPointXYZ*>(optimizer.vertex(keyframes.size()+i));
-      map_.GetPoints()[pvertex_id[i]]->SetWorldPos(point->estimate());
+        VertexSBAPointXYZ* point = dynamic_cast<VertexSBAPointXYZ*>(optimizer.vertex(keyframes.size() + i));
+        map_.GetPoints()[pvertex_id[i]]->SetWorldPos(point->estimate());
     }
 }
 

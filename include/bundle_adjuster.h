@@ -20,7 +20,7 @@
 #include "keyframe.h"
 #include "types.h"
 using namespace g2o;
-    /*class VertexPoint : public g2o::BaseVertex<3, V3d> {
+/*class VertexPoint : public g2o::BaseVertex<3, V3d> {
     public:
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
         VertexPoint()
@@ -52,77 +52,73 @@ using namespace g2o;
         }
     };*/
 
-    // g2o vertex that use sophus::SE3 as pose
-    // g2o vertex that use sophus::SE3 as pose
-    class VertexSophus : public g2o::BaseVertex<6, Sophus::SE3d>
+// g2o vertex that use sophus::SE3 as pose
+// g2o vertex that use sophus::SE3 as pose
+class VertexSophus : public g2o::BaseVertex<6, Sophus::SE3d> {
+public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+    VertexSophus() {}
+
+    ~VertexSophus() {}
+
+    bool read(std::istream& is) {}
+
+    bool write(std::ostream& os) const {}
+
+    virtual void setToOriginImpl()
     {
-        public:
-        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+        _estimate = Sophus::SE3d();
+    }
 
-        VertexSophus() {}
+    virtual void oplusImpl(const double* update_)
+    {
+        Eigen::Map<const Eigen::Matrix<double, 6, 1> > update(update_);
+        setEstimate(Sophus::SE3d::exp(update) * estimate());
+    }
+};
 
-        ~VertexSophus() {}
+class EdgeObservation : public g2o::BaseBinaryEdge<2, V2d, g2o::VertexSBAPointXYZ, VertexSophus> {
+public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
-        bool read(std::istream &is) {}
+    EdgeObservation(M3d K)
+    {
+        this->K_ = K;
+    }
 
-        bool write(std::ostream &os) const {}
+    ~EdgeObservation() {}
 
-        virtual void setToOriginImpl()
-        {
-            _estimate = Sophus::SE3d();
-        }
+    virtual void computeError() override
+    {
+        //double fx, cx, fy, cy;
+        //fx = 517.3; fy = 516.5; cx= 325.1; cy=249.7;
+        const VertexSBAPointXYZ* p = static_cast<const VertexSBAPointXYZ*>(_vertices[0]);
+        const VertexSophus* c = static_cast<const VertexSophus*>(_vertices[1]);
+        V3d global = p->estimate();
+        V3d local = c->estimate() * global;
+        double u = local[0] * K_(0, 0) / local[2] + K_(0, 2);
+        double v = local[1] * K_(1, 1) / local[2] + K_(1, 2);
+        _error(0, 0) = u - _measurement[0];
+        _error(1, 0) = v - _measurement[1];
 
-        virtual void oplusImpl(const double *update_)
-        {
-            Eigen::Map<const Eigen::Matrix<double, 6, 1>> update(update_);
-            setEstimate(Sophus::SE3d::exp(update) * estimate());
-        }
-    };
+        assert(!std::isnan(u));
+        assert(!std::isnan(v));
+    }
+    virtual bool read(std::istream& /*is*/)
+    {
+        //cerr << __PRETTY_FUNCTION__ << " not implemented yet" << endl;
+        return false;
+    }
 
+    virtual bool write(std::ostream& /*os*/) const
+    {
+        //cerr << __PRETTY_FUNCTION__ << " not implemented yet" << endl;
+        return false;
+    }
 
-    class EdgeObservation : public g2o::BaseBinaryEdge<2, V2d, g2o::VertexSBAPointXYZ, VertexSophus> {
-    public:
-        EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
-
-        EdgeObservation(M3d K)
-        {
-            this->K_ = K;
-        }
-
-        ~EdgeObservation() {}
-
-        virtual void computeError() override
-        {
-            //double fx, cx, fy, cy;
-            //fx = 517.3; fy = 516.5; cx= 325.1; cy=249.7;
-            const VertexSBAPointXYZ* p = static_cast<const VertexSBAPointXYZ*> ( _vertices[0] );
-            const VertexSophus* c = static_cast<const VertexSophus*> ( _vertices[1] );
-            V3d global = p->estimate();
-            V3d local = c->estimate()*global;
-            double u = local[0]*K_(0,0)/local[2] + K_(0,2);
-            double v = local[1]*K_(1,1)/local[2] + K_(1,2);
-            _error(0,0) = u-_measurement[0];
-            _error(1,0) = v-_measurement[1];
-
-            assert (!std::isnan(u));
-            assert (!std::isnan(v));
-
-        }
-        virtual bool read(std::istream& /*is*/)
-        {
-            //cerr << __PRETTY_FUNCTION__ << " not implemented yet" << endl;
-            return false;
-        }
-
-        virtual bool write(std::ostream& /*os*/) const
-        {
-            //cerr << __PRETTY_FUNCTION__ << " not implemented yet" << endl;
-            return false;
-        }
-    private:
-        M3d K_;  // the source image
-    };
- 
- 
+private:
+    M3d K_; // the source image
+};
 
 #endif //VISO_BUNDLE_ADJUSTER_H
