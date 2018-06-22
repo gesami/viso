@@ -19,7 +19,7 @@ Initializer::Initializer()
     reprojection_thresh_ = Config::get<double>("reprojection_thresh");
 }
 
-bool Initializer::InitializeMap(Keyframe::Ptr cur_frame, Map* map, const cv::Mat& display)
+bool Initializer::InitializeMap(Keyframe::Ptr cur_frame, viso::Map* map, const cv::Mat& display)
 {
     if (frame_cnt_ > 0 && frame_cnt_ <= reset_after_) {
         ++frame_cnt_;

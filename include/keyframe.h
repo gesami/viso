@@ -149,7 +149,7 @@ public:
     inline int AddKeypoint(cv::KeyPoint kp)
     {
         keypoints_.push_back(kp);
-        return keypoints_.size();
+        return keypoints_.size() - 1;
     }
 
     inline int AddKeypointForDepthFiler(cv::KeyPoint kp)

@@ -7,13 +7,13 @@
 
 #include <common.h>
 #include <keyframe.h>
-#include <map.h>
+#include <slam_map.h>
 #include <config.h>
 
 class Initializer {
 public:
     Initializer();
-    bool InitializeMap(Keyframe::Ptr cur_frame, Map* map, const cv::Mat& display);
+    bool InitializeMap(Keyframe::Ptr cur_frame, viso::Map* map, const cv::Mat& display);
 
 private:
     void OpticalFlowSingleLevel(const cv::Mat& img1, const cv::Mat& img2,

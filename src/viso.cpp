@@ -23,8 +23,7 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
         cv::waitKey(10);
         if (initialized) {
             state_ = kRunning;
-            BA(true, {}, {}, {});
-            filter = new depth_filter(cur_frame->GetK(), cur_frame->Mat(), cur_frame->GetKeypointsDF(), cur_frame->GetPose());
+            BA(true, 1, {}, {}, {});
         }
     } break;
 
@@ -58,24 +57,44 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
         cv::imshow("Tracked", display);
         cv::waitKey(10);
 
+        // for now there is only one active filter
+        if (filter != nullptr) {
+            if (filter->IsDone()) {
+                delete filter;
+                filter = nullptr;
+            } else {
+                filter->Update(cur_frame);
+                //filter->UpdateMap(&map_);
+            }
+        }
 
         if (IsKeyframe(cur_frame)) {
+            assert(cur_frame->Keypoints().size() == 0);
+
             std::vector<cv::KeyPoint> kp;
             map_.AddKeyframe(cur_frame);
             featureDetector->detect(cur_frame->Mat(), kp);
             cur_frame->SetOccupied();
             cur_frame->AddNewFeatures(kp);
 
+            vector<MapPoint::Ptr> map_points = map_.GetPoints();
+
+            for (int i = 0; i < tracked_points.size(); ++i) {
+                cv::KeyPoint kp;
+                kp.pt.x = kp_after[i].x();
+                kp.pt.y = kp_after[i].y();
+                int kp_idx = cur_frame->AddKeypoint(kp);
+                map_points[tracked_points[i]]->AddObservation(cur_frame, kp_idx);
+            }
+
             // TODO: What else do we have to do here?
-
+            if (filter == nullptr) {
+                filter = new depth_filter(cur_frame);
+            }
             std::cout << "New keyframe added!\n";
+
+            BA(true, 2, {}, {}, {});
         }
-
-        //BA(false, cur_frame, kp_after, tracked_points);
-
-        //if(filter != nullptr) {
-        //  filter->update(cur_frame->Mat(), cur_frame->GetPose());
-        //}
 
     } break;
 
@@ -512,7 +531,7 @@ void Viso::LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool
     }
 }
 
-void Viso::BA(bool map_only, Keyframe::Ptr current_frame, const std::vector<V2d>& kp, const std::vector<int>& tracked_points)
+void Viso::BA(bool map_only, int fix_cnt, Keyframe::Ptr current_frame, const std::vector<V2d>& kp, const std::vector<int>& tracked_points)
 {
     using KernelType = g2o::RobustKernelHuber;
 
@@ -551,7 +570,7 @@ void Viso::BA(bool map_only, Keyframe::Ptr current_frame, const std::vector<V2d>
     for (size_t i = 0; i < keyframes.size(); i++, id++) {
         VertexSophus* cam = new VertexSophus();
         cam->setId(id);
-        if (i < 1) {
+        if (i < fix_cnt) {
             cam->setFixed(true); //fix the pose of the first frame
         }
         cam->setEstimate(keyframes[i]->GetPose());

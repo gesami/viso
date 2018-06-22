@@ -17,7 +17,7 @@ struct PangoState {
 
 static bool running = true;
 
-void DrawMap(Map* map);
+void DrawMap(viso::Map* map);
 
 double fx;
 double fy;
@@ -91,7 +91,7 @@ int main(int argc, char const* argv[])
     return 0;
 }
 
-void DrawMap(Map* map)
+void DrawMap(viso::Map* map)
 {
     //
     // Initialize pangolin.

@@ -6,8 +6,8 @@
 #include "config.h"
 #include "frame_sequence.h"
 #include "keyframe.h"
-#include "map.h"
 #include "ring_buffer.h"
+#include "slam_map.h"
 #include <initializer.h>
 #include <sophus/se3.hpp>
 #include <tuple>
@@ -42,9 +42,8 @@ private:
     M3d K;
 
     Initializer initializer;
-    Map map_;
+    viso::Map map_;
     State state_;
-
 
     cv::Ptr<cv::GFTTDetector> featureDetector = cv::GFTTDetector::create(max_feature, qualityLevel, minDistance);
 
@@ -74,7 +73,7 @@ public:
         return points;
     }
 
-    inline Map* GetMap() { return &map_; }
+    inline viso::Map* GetMap() { return &map_; }
 
 private:
     void DirectPoseEstimationSingleLayer(int level, Keyframe::Ptr current_frame, Sophus::SE3d& T21);
@@ -89,7 +88,7 @@ private:
 
     void LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before, std::vector<V2d>& kp_after, std::vector<int>& tracked_points);
     void LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool>& success, std::vector<V2d>& kp, int level);
-    void BA(bool map_only, Keyframe::Ptr current_frame, const std::vector<V2d>& kp, const std::vector<int>& tracked_points);
+    void BA(bool map_only, int fix_cnt, Keyframe::Ptr current_frame, const std::vector<V2d>& kp, const std::vector<int>& tracked_points);
     bool IsKeyframe(Keyframe::Ptr keyframe);
 };
 
