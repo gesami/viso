@@ -26,6 +26,7 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
             state_ = kRunning;
             BA(true, 1);
             do_ba_ = false;
+            if(add_ba){
             ba_thread_ = std::thread([&]() {
                 while (running.load()) {
                     if (do_ba_.load()) {
@@ -622,7 +623,7 @@ void Viso::BA(bool map_only, int fix_cnt)
         for (int i = 0; i < keyframes.size(); i++) {
             VertexSophus* pose = cameras_v[i];
             Sophus::SE3d p_opt = pose->estimate();
-            keyframes[i]->SetPose(p_opt);
+            map_.Keyframes()[i]->SetPose(p_opt);;
         }
 
         for (int i = 0; i < map_points.size(); i++) {

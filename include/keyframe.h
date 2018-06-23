@@ -20,9 +20,10 @@ private:
     std::string time_;
 
     cv::Mat mat_;
-    M3d R_;
-    V3d T_;
+    M3d R_, relat_R; //relative transformation between keyframe
+    V3d T_, relat_T;
     M3d K_;
+    int relatkey_;
 
     const int nr_pyramids_ = 4;
     const double pyramid_scale_ = 0.5;
@@ -134,6 +135,9 @@ public:
     inline V3d GetT() { return T_; }
     inline void SetT(V3d T) { T_ = T; }
     inline void SetR(M3d R) { R_ = R; }
+    inline void SetrelatT(V3d T) { relatT_ = T; }
+    inline void SetrelatR(M3d R) { relatR_ = R; }
+    inline void SetrelatKey(int a) { relatkey_ = a; }
     inline M3d GetK() { return K_; }
     inline void SetK(M3d K) { K_ = K; }
     inline const std::string& GetTime() { return time_; }

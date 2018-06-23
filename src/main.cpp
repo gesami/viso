@@ -71,21 +71,36 @@ int main(int argc, char const* argv[])
 
     std::thread ui_thread(&DrawMap, viso.GetMap());
 
-    while (running) {
+    for ( int i=0; i<rgb_files.size(); i++ )
+    {
         sequence.RunOnce();
-        Eigen::Quaternion<double> q(viso.last_frame->GetR());
-        V3d t(viso.last_frame->GetT());
+        //Eigen::Quaternion<double> q(viso.last_frame->GetR());
+        //V3d t(viso.last_frame->GetT());
+        //q.normalize();
+        //qx = q.x();
+        //qy = q.y();
+        //qz = q.z();
+        //qw = q.w();
+        //cout << viso.last_frame->times_<<" "<<t[0]<<" "<<t[1]<<" "<<t[2]<<" "<<qx<<" "<<qy<<" "<<qz<<" "<<qw<<endl;
+        //out.open(dataset_dir + "/estimation.txt", std::ofstream::out | std::ofstream::app);
+        //out << viso.last_frame->GetTime() << " " << t[0] << " " << t[1] << " " << t[2] << " " << qx << " " << qy << " " << qz << " " << qw << endl;
+        //out.close();
+    }
+
+    cout << "print out trajectory to estimation.txt" << endl;
+    for (int i=0; i<viso.GetMap()->Keyframes().size(); i++)
+    {
+        Eigen::Quaternion<double> q(viso.GetMap()->Keyframes()[i]->GetR());
+        V3d t(viso.GetMap()->Keyframes()[i]->GetT());
         q.normalize();
         qx = q.x();
         qy = q.y();
         qz = q.z();
         qw = q.w();
-        //cout << viso.last_frame->times_<<" "<<t[0]<<" "<<t[1]<<" "<<t[2]<<" "<<qx<<" "<<qy<<" "<<qz<<" "<<qw<<endl;
         out.open(dataset_dir + "/estimation.txt", std::ofstream::out | std::ofstream::app);
-        out << viso.last_frame->GetTime() << " " << t[0] << " " << t[1] << " " << t[2] << " " << qx << " " << qy << " " << qz << " " << qw << endl;
+        out << viso.GetMap()->Keyframes()[i]->GetTime() << " " << t[0] << " " << t[1] << " " << t[2] << " " << qx << " " << qy << " " << qz << " " << qw << endl;
         out.close();
     }
-
     viso.running = false;
     ui_thread.join();
 
