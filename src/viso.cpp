@@ -37,16 +37,19 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
                 }
             });
         }
+        }
+        //last_frame = cur_frame;
     } break;
 
     case kRunning: {
         std::lock_guard<std::mutex> lock(update_map_);
+        //Sophus::SE3d oX = Sophus::SE3d(last_frame->GetR(), last_frame->GetT());
         Sophus::SE3d X = Sophus::SE3d(last_frame->GetR(), last_frame->GetT());
         DirectPoseEstimationMultiLayer(cur_frame, X);
 
         cur_frame->SetR(X.rotationMatrix());
         cur_frame->SetT(X.translation());
-
+        //k2f = X*oX.inverse();
         map_.SetCurrent(cur_frame);
 
         std::vector<V2d> kp_before, kp_after;
@@ -99,6 +102,7 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
             //BA_KEY();
 
             do_ba_ = true;
+            //last_frame = cur_frame;
         }
 
     } break;
