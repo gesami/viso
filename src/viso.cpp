@@ -64,10 +64,10 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
         cv::waitKey(10);
 
         // for now there is only one active filter
-        if (filter != nullptr) {
-            filter->Update(cur_frame);
-            filter->UpdateMap(&map_);
-        }
+//        if (filter != nullptr) {
+//            filter->Update(cur_frame);
+//            filter->UpdateMap(&map_);
+//        }
 
         if (IsKeyframe(cur_frame, tracked_points.size())) {
             assert(cur_frame->Keypoints().size() == 0);
@@ -89,11 +89,11 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
             cur_frame->AddNewFeatures(kp);
 
             // TODO: What else do we have to do here?
-            if (filter != nullptr) {
-                delete filter;
-            }
-
-            filter = new depth_filter(cur_frame);
+//            if (filter != nullptr) {
+//                delete filter;
+//            }
+//
+//            filter = new depth_filter(cur_frame);
             std::cout << "New keyframe added!\n";
             //BA_KEY();
 
@@ -616,22 +616,21 @@ void Viso::BA(bool map_only, int fix_cnt)
     optimizer.optimize(BA_iteration);
     std::cout << "end!" << std::endl;
 
+    {
+        std::lock_guard<std::mutex> lock(update_map_);
 
-  {
-    std::lock_guard<std::mutex> lock(update_map_);
+        for (int i = 0; i < keyframes.size(); i++) {
+            VertexSophus* pose = cameras_v[i];
+            Sophus::SE3d p_opt = pose->estimate();
+            keyframes[i]->SetPose(p_opt);
+        }
 
-    for (int i = 0; i < keyframes.size(); i++) {
-      VertexSophus *pose = cameras_v[i];
-      Sophus::SE3d p_opt = pose->estimate();
-      keyframes[i]->SetPose(p_opt);
+        for (int i = 0; i < map_points.size(); i++) {
+            VertexSBAPointXYZ* point = points_v[i];
+            V3d point_opt = point->estimate();
+            map_.GetPoints()[i]->SetWorldPos(point_opt);
+        }
     }
-
-    for (int i = 0; i < map_points.size(); i++) {
-      VertexSBAPointXYZ *point = points_v[i];
-      V3d point_opt = point->estimate();
-      map_.GetPoints()[i]->SetWorldPos(point_opt);
-    }
-  }
 }
 
 void Viso::BA_KEY()
