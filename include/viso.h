@@ -32,6 +32,8 @@ private:
 
     const double new_kf_dist_thresh = Config::get<double>("new_kf_dist_thresh");
     const double new_kf_angle_thresh = Config::get<double>("new_kf_angle_thresh");
+    const int new_kf_nr_tracked_points = Config::get<int>("new_kf_nr_tracked_points");
+    const int new_kf_nr_frames_inbtw = Config::get<int>("new_kf_nr_frames_inbtw");
 
     //const int lk_half_patch_size = 5;
     //const double lk_photometric_thresh = (lk_half_patch_size * 2) * (lk_half_patch_size * 2) * 15 * 15;
@@ -90,7 +92,7 @@ private:
     void LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool>& success, std::vector<V2d>& kp, int level);
     void BA(bool map_only, int fix_cnt, Keyframe::Ptr current_frame, const std::vector<V2d>& kp, const std::vector<int>& tracked_points);
     void BA_KEY();
-    bool IsKeyframe(Keyframe::Ptr keyframe);
+    bool IsKeyframe(Keyframe::Ptr keyframe, int nr_tracked_points);
 };
 
 #endif

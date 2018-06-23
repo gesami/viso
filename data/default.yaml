@@ -1,7 +1,7 @@
 %YAML:1.0
 # data
 # the tum dataset directory, change it to yours! 
-dataset_dir: .
+dataset_dir: /home/sage/Downloads/rgbd_dataset_freiburg1_room
 
 # camera intrinsics
 # fr1
@@ -19,24 +19,24 @@ camera.cy: 249.7
 
 # VO Parameters
 number_of_features: 500
-lk_half_patch_size: 5
-lk_d2_factor: 2.25
+lk_half_patch_size: 7
+lk_d2_factor: 9.25
 BA_iteration: 100
-ba_outlier_thresh: 1
+ba_outlier_thresh: 2
 max_feature: 500
 qualityLevel: 0.01
 minDistance: 10
 grid_size: 20
 
 # initializuation
-reset_after: 20
+reset_after: 15
 iterations: 10
 half_patch_size: 10
-photometric_thresh: 15.0
+photometric_thresh: 25.0
 min_good_cnt: 100
 disparity_thresh: 25.0
 reprojection_thresh: 0.3
 
 # new keyframe
-new_kf_dist_thresh: 0.2
-new_kf_angle_thresh: 0.3
+new_kf_dist_thresh: 0.15
+new_kf_angle_thresh: 0.2

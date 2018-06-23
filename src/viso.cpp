@@ -60,16 +60,11 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
 
         // for now there is only one active filter
         if (filter != nullptr) {
-            if (filter->IsDone()) {
-                delete filter;
-                filter = nullptr;
-            } else {
-                filter->Update(cur_frame);
-                filter->UpdateMap(&map_);
-            }
+            filter->Update(cur_frame);
+            filter->UpdateMap(&map_);
         }
 
-        if (IsKeyframe(cur_frame)) {
+        if (IsKeyframe(cur_frame, tracked_points.size())) {
             assert(cur_frame->Keypoints().size() == 0);
 
             std::vector<cv::KeyPoint> kp;
@@ -88,12 +83,12 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
             cur_frame->SetOccupied(map_.GetPoints3d());
             cur_frame->AddNewFeatures(kp);
 
-            
-
             // TODO: What else do we have to do here?
-            if (filter == nullptr) {
-                filter = new depth_filter(cur_frame);
+            if (filter != nullptr) {
+                delete filter;
             }
+
+            filter = new depth_filter(cur_frame);
             std::cout << "New keyframe added!\n";
 
             BA(true, 2, {}, {}, {});
@@ -437,6 +432,7 @@ void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before,
         if (success[i]) {
             if (d2[j] > median_d2 * lk_d2_factor) {
                 success[i] = false;
+                cout << "tracking outlier\n";
             }
             ++j;
         }
@@ -782,7 +778,7 @@ void Viso::BA_KEY()
     }
 }
 
-bool Viso::IsKeyframe(Keyframe::Ptr cur_frame)
+bool Viso::IsKeyframe(Keyframe::Ptr cur_frame, int nr_tracked_points)
 {
     V3d last_T = map_.GetLastPose().translation();
     V3d cur_T = cur_frame->GetT();
