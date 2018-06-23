@@ -8,8 +8,10 @@
 #include "keyframe.h"
 #include "ring_buffer.h"
 #include "slam_map.h"
+#include <atomic>
 #include <initializer.h>
 #include <sophus/se3.hpp>
+#include <thread>
 #include <tuple>
 
 class Viso : public FrameSequence::FrameHandler {
@@ -21,7 +23,8 @@ private:
     };
 
     int lk_half_patch_size = Config::get<int>("lk_half_patch_size");
-    double lk_photometric_thresh = (lk_half_patch_size * 2) * (lk_half_patch_size * 2) * 15 * 15;
+    double lk_photometric_thresh = (lk_half_patch_size * 2) * (lk_half_patch_size * 2) * Config::get<double>("lk_photometric_thresh") * Config::get<double>("lk_photometric_thresh");
+    ;
     double lk_d2_factor = Config::get<double>("lk_d2_factor"); // deviation of median disparity
     int BA_iteration = Config::get<int>("BA_iteration");
     double ba_outlier_thresh = Config::get<double>("ba_outlier_thresh"); // deviation of median disparity
@@ -32,6 +35,8 @@ private:
 
     const double new_kf_dist_thresh = Config::get<double>("new_kf_dist_thresh");
     const double new_kf_angle_thresh = Config::get<double>("new_kf_angle_thresh");
+    const int new_kf_nr_tracked_points = Config::get<int>("new_kf_nr_tracked_points");
+    const int new_kf_nr_frames_inbtw = Config::get<int>("new_kf_nr_frames_inbtw");
 
     //const int lk_half_patch_size = 5;
     //const double lk_photometric_thresh = (lk_half_patch_size * 2) * (lk_half_patch_size * 2) * 15 * 15;
@@ -47,12 +52,19 @@ private:
 
     cv::Ptr<cv::GFTTDetector> featureDetector = cv::GFTTDetector::create(max_feature, qualityLevel, minDistance);
 
+    std::thread ba_thread_;
+    std::atomic<bool> do_ba_;
+    std::mutex update_map_;
+
 public:
     Viso(double fx, double fy, double cx, double cy)
     {
         K << fx, 0, cx, 0, fy, cy, 0, 0, 1;
         state_ = kInitialization;
+        running = true;
     }
+
+    std::atomic<bool> running;
 
     std::vector<Sophus::SE3d> poses;
     std::vector<Sophus::SE3d> poses_opt;
@@ -88,9 +100,9 @@ private:
 
     void LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before, std::vector<V2d>& kp_after, std::vector<int>& tracked_points);
     void LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool>& success, std::vector<V2d>& kp, int level);
-    void BA(bool map_only, int fix_cnt, Keyframe::Ptr current_frame, const std::vector<V2d>& kp, const std::vector<int>& tracked_points);
+    void BA(bool map_only, int fix_cnt);
     void BA_KEY();
-    bool IsKeyframe(Keyframe::Ptr keyframe);
+    bool IsKeyframe(Keyframe::Ptr keyframe, int nr_tracked_points);
 };
 
 #endif

@@ -30,11 +30,10 @@ class depth_filter {
 
     const int ncc_window_size = 7; // NCC half window size
     const int ncc_area = (2 * ncc_window_size + 1) * (2 * ncc_window_size + 1); // NCC window area
-    const double min_cov = 0.01; // convergence determination: minimum variance
+    const double min_cov = 0.1; // convergence determination: minimum variance
     const double max_cov = 10; // divergence determination: maximum variance
 
     const double reprojection_thresh_ = Config::get<double>("reprojection_thresh");
-    const int max_iterations = 10;
 
     double fx;
     double fy;
@@ -77,11 +76,6 @@ public:
         current_iteration_ = 0;
     }
 
-    bool IsDone()
-    {
-        return current_iteration_ >= max_iterations;
-    }
-
     // This should be called, after the filter IsDone() == true
     void UpdateMap(viso::Map* map)
     {
@@ -100,13 +94,7 @@ public:
 
     void Update(Keyframe::Ptr cur_frame)
     {
-        if (IsDone()) {
-            return;
-        }
-
         cur_frame_ = cur_frame;
-
-        ++current_iteration_;
 
         SE3d pose_curr_TWC = cur_frame->GetPose();
         SE3d pose_T_C_R = pose_curr_TWC * ref_frame_->GetPose().inverse(); // change world coordinate： T_C_W * T_W_R = T_C_R

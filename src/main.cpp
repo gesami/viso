@@ -86,6 +86,7 @@ int main(int argc, char const* argv[])
         out.close();
     }
 
+    viso.running = false;
     ui_thread.join();
 
     return 0;

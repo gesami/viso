@@ -62,8 +62,8 @@ public:
         }
 
         //Set grid
-        grid_col_ = ceil(static_cast<double>(mat_.cols / grid_size_));
-        grid_row_ = ceil(static_cast<double>(mat_.rows / grid_size_));
+        grid_col_ = ceil(mat_.cols / (double) grid_size_);
+        grid_row_ = ceil(mat_.rows / (double) grid_size_);
         grid_occupy_.resize(grid_col_*grid_row_, false);
     }
 
