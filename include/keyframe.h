@@ -20,8 +20,8 @@ private:
     std::string time_;
 
     cv::Mat mat_;
-    M3d R_, relat_R; //relative transformation between keyframe
-    V3d T_, relat_T;
+    M3d R_, relatR_; //relative transformation between keyframe
+    V3d T_, relatT_;
     M3d K_;
     int relatkey_;
 
