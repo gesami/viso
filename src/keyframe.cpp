@@ -52,7 +52,6 @@ void Keyframe::AddNewFeatures(std::vector<cv::KeyPoint> newfts)
         if (grid_occupy_.at(y * grid_col_ + x) == false) {
             cnt++;
             AddKeypointForDepthFiler(kp);
-            grid_occupy_.at(y * grid_col_ + x) = true;
 //            cv::circle(display, kp.pt, 2, cv::Scalar(0, 0, 250), 2);
         }
     }

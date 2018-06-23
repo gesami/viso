@@ -1,7 +1,8 @@
 %YAML:1.0
 # data
 # the tum dataset directory, change it to yours! 
-dataset_dir: /home/sage/Downloads/rgbd_dataset_freiburg1_room
+dataset_dir: .
+#dataset_dir: /home/sage/Downloads/mav0/cam0/data/
 
 # camera intrinsics
 # fr1
@@ -10,29 +11,34 @@ camera.fy: 516.5
 camera.cx: 325.1
 camera.cy: 249.7
 
+#camera.fx: 458.654
+#camera.fy: 457.296
+#camera.cx: 367.215
+#camera.cy: 248.375
+
 # fr2
 #camera.fx: 520.9
 #camera.fy: 521.0
 #camera.cx: 325.1
 #camera.cy: 249.7
 
-
 # VO Parameters
 number_of_features: 500
-lk_half_patch_size: 7
-lk_d2_factor: 9.25
+lk_half_patch_size: 8
+lk_d2_factor: 0.9
+lk_photometric_thresh: 40
 BA_iteration: 100
-ba_outlier_thresh: 2
+ba_outlier_thresh: 5
 max_feature: 500
 qualityLevel: 0.01
 minDistance: 10
-grid_size: 20
+grid_size:  20
 
-# initializuation
+# initialization
 reset_after: 15
 iterations: 10
 half_patch_size: 10
-photometric_thresh: 25.0
+photometric_thresh: 20.0
 min_good_cnt: 100
 disparity_thresh: 25.0
 reprojection_thresh: 0.3
