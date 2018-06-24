@@ -52,7 +52,7 @@ private:
     Sophus::SE3d k2f; //keyframe-to-frame motion
     Sophus::SE3d f2f; //last frame-to-frame motion
     Sophus::SE3d lf; //last frame motion
-
+    Sophus::SE3d lkf; //last keyframe motion
 
     cv::Ptr<cv::GFTTDetector> featureDetector = cv::GFTTDetector::create(max_feature, qualityLevel, minDistance);
 

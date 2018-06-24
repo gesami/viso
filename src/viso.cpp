@@ -48,20 +48,22 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
                 }
             });
             }
+            lkf = cur_frame->GetPose();
         }
-        last_frame = cur_frame;
+        //last_frame = cur_frame;
     } break;
 
     case kRunning: {
         std::lock_guard<std::mutex> lock(update_map_);
-        Sophus::SE3d oX = Sophus::SE3d(last_frame->GetR(), last_frame->GetT()); //Keyframe pose
-        Sophus::SE3d X = f2f*lf;
+        //Sophus::SE3d oX = Sophus::SE3d(last_frame->GetR(), last_frame->GetT()); //Keyframe pose
+        //Sophus::SE3d X = f2f*lf;
+        Sophus::SE3d X = Sophus::SE3d(last_frame->GetR(), last_frame->GetT()); //Keyframe pose
         DirectPoseEstimationMultiLayer(cur_frame, X);
 
         cur_frame->SetR(X.rotationMatrix());
         cur_frame->SetT(X.translation());
-        k2f = X*oX.inverse();
-        f2f = X*lf.inverse();
+        k2f = X*lkf.inverse();
+        //f2f = X*lf.inverse();
         map_.SetCurrent(cur_frame);
 
         frame_time.push_back(cur_frame->GetTime());
@@ -121,8 +123,9 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
             do_ba_ = true;
             cout << "set k2f" << endl;
             k2f = Sophus::SE3d(M3d::Identity(), V3d::Zero());
+            lkf = cur_frame->GetPose(); 
             cout << "set last frame" << endl;
-            last_frame = cur_frame;
+            //last_frame = cur_frame;
         }
 
     } break;
@@ -131,7 +134,7 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
         break;
     }
     lf = Sophus::SE3d(cur_frame->GetR(), cur_frame->GetT());
-    //last_frame = cur_frame;
+    last_frame = cur_frame;
 }
 
 #if 0
