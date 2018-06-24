@@ -49,6 +49,10 @@ private:
     Initializer initializer;
     viso::Map map_;
     State state_;
+    Sophus::SE3d k2f; //keyframe-to-frame motion
+    Sophus::SE3d f2f; //last frame-to-frame motion
+    Sophus::SE3d lf; //last frame motion
+
 
     cv::Ptr<cv::GFTTDetector> featureDetector = cv::GFTTDetector::create(max_feature, qualityLevel, minDistance);
 
@@ -69,6 +73,9 @@ public:
     std::vector<Sophus::SE3d> poses;
     std::vector<Sophus::SE3d> poses_opt;
     std::vector<V3d> points_opt;
+    std::vector<std::string> frame_time;
+    std::vector<int> ref_key;
+    std::vector<Sophus::SE3d> ref_pose;
 
     Keyframe::Ptr last_frame;
 

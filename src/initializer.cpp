@@ -19,7 +19,7 @@ Initializer::Initializer()
     reprojection_thresh_ = Config::get<double>("reprojection_thresh");
 }
 
-bool Initializer::InitializeMap(Keyframe::Ptr cur_frame, viso::Map* map, const cv::Mat& display)
+bool Initializer::InitializeMap(Keyframe::Ptr cur_frame, viso::Map* map, const cv::Mat& display, std::string &first)
 {
     if (frame_cnt_ > 0 && frame_cnt_ <= reset_after_) {
         ++frame_cnt_;
@@ -123,7 +123,7 @@ bool Initializer::InitializeMap(Keyframe::Ptr cur_frame, viso::Map* map, const c
         featureDetector->detect(cur_frame->Mat(), cur_kp_);
         cur_frame->SetOccupied(map->GetPoints3d());
         cur_frame->AddNewFeatures(cur_kp_);
-
+        first = ref_frame_->GetTime();
         return true;
     } else {
         ref_kp_.clear();

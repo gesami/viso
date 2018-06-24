@@ -108,6 +108,11 @@ public:
     {
         return current_frame_;
     }
+
+    inline int GetKeyid()
+    {
+        return (keyframes_.size()-1);
+    }
 };
 }
 

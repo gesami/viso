@@ -8,9 +8,9 @@ long Keyframe::next_id_ = 0;
 const double Keyframe::scales[] = { 1.0, 0.5, 0.25, 0.125 };
 void Keyframe::SetOccupied(std::vector<V3d> mp)
 {
-    std::cout << "count occupied grid!" << std::endl;
-    std::cout << "grid size: " << grid_size_ << std::endl;
-    std::cout << "grid occupy size: " << grid_occupy_.size() << endl;
+    //std::cout << "count occupied grid!" << std::endl;
+    //std::cout << "grid size: " << grid_size_ << std::endl;
+    //std::cout << "grid occupy size: " << grid_occupy_.size() << endl;
     for (int i = 0; i < mp.size(); i++) {
         //V3d Pw = mp->GetWorldPos();
         V2d uv = this->Project(mp[i], 0);

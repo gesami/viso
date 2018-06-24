@@ -19,13 +19,24 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
         // Visualization
         cv::Mat img;
         cv::cvtColor(cur_frame->Mat(), img, CV_GRAY2BGR);
-        bool initialized = initializer.InitializeMap(cur_frame, &map_, img);
-        cv::imshow("Tracked", img);
-        cv::waitKey(10);
+        std::string first;
+        bool initialized = initializer.InitializeMap(cur_frame, &map_, img, first);
+        //cv::imshow("Tracked", img);
+        //cv::waitKey(10);
         if (initialized) {
             state_ = kRunning;
             BA(true, 1);
             do_ba_ = false;
+            k2f = Sophus::SE3d(M3d::Identity(), V3d::Zero());
+            f2f = Sophus::SE3d(cur_frame->GetR(), cur_frame->GetT());
+            ///for trajectory record
+            frame_time.push_back(first);
+            ref_key.push_back(0);
+            ref_pose.push_back(k2f);
+            frame_time.push_back(cur_frame->GetTime());
+            ref_key.push_back(1);
+            ref_pose.push_back(k2f);
+
             if(add_ba){
             ba_thread_ = std::thread([&]() {
                 while (running.load()) {
@@ -36,21 +47,26 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
                     }
                 }
             });
+            }
         }
-        }
-        //last_frame = cur_frame;
+        last_frame = cur_frame;
     } break;
 
     case kRunning: {
         std::lock_guard<std::mutex> lock(update_map_);
-        //Sophus::SE3d oX = Sophus::SE3d(last_frame->GetR(), last_frame->GetT());
-        Sophus::SE3d X = Sophus::SE3d(last_frame->GetR(), last_frame->GetT());
+        Sophus::SE3d oX = Sophus::SE3d(last_frame->GetR(), last_frame->GetT()); //Keyframe pose
+        Sophus::SE3d X = f2f*lf;
         DirectPoseEstimationMultiLayer(cur_frame, X);
 
         cur_frame->SetR(X.rotationMatrix());
         cur_frame->SetT(X.translation());
-        //k2f = X*oX.inverse();
+        k2f = X*oX.inverse();
+        f2f = X*lf.inverse();
         map_.SetCurrent(cur_frame);
+
+        frame_time.push_back(cur_frame->GetTime());
+        ref_key.push_back(map_.GetKeyid());
+        ref_pose.push_back(k2f);
 
         std::vector<V2d> kp_before, kp_after;
         std::vector<int> tracked_points;
@@ -58,14 +74,15 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
 
         cv::Mat display;
         cv::cvtColor(cur_frame->Mat(), display, CV_GRAY2BGR);
-
+        
+        /*
         for (int i = 0; i < kp_after.size(); ++i) {
             cv::rectangle(display, cv::Point2f(kp_after[i].x() - 4, kp_after[i].y() - 4), cv::Point2f(kp_after[i].x() + 4, kp_after[i].y() + 4),
                 cv::Scalar(0, 255, 0));
         }
 
         cv::imshow("Tracked", display);
-        cv::waitKey(10);
+        cv::waitKey(10);*/
 
         // for now there is only one active filter
 //        if (filter != nullptr) {
@@ -102,7 +119,10 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
             //BA_KEY();
 
             do_ba_ = true;
-            //last_frame = cur_frame;
+            cout << "set k2f" << endl;
+            k2f = Sophus::SE3d(M3d::Identity(), V3d::Zero());
+            cout << "set last frame" << endl;
+            last_frame = cur_frame;
         }
 
     } break;
@@ -110,8 +130,8 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
     default:
         break;
     }
-
-    last_frame = cur_frame;
+    lf = Sophus::SE3d(cur_frame->GetR(), cur_frame->GetT());
+    //last_frame = cur_frame;
 }
 
 #if 0

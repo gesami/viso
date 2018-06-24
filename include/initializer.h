@@ -13,7 +13,7 @@
 class Initializer {
 public:
     Initializer();
-    bool InitializeMap(Keyframe::Ptr cur_frame, viso::Map* map, const cv::Mat& display);
+    bool InitializeMap(Keyframe::Ptr cur_frame, viso::Map* map, const cv::Mat& display, std::string& first);
 
 private:
     void OpticalFlowSingleLevel(const cv::Mat& img1, const cv::Mat& img2,
