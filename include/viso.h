@@ -38,6 +38,8 @@ private:
     const int new_kf_nr_tracked_points = Config::get<int>("new_kf_nr_tracked_points");
     const int new_kf_nr_frames_inbtw = Config::get<int>("new_kf_nr_frames_inbtw");
     const int add_ba = Config::get<int>("do_bundle_adjustment");
+    const int add_mba = Config::get<int>("do_motion_only_bundle_adjustment");
+    const double chi2_thresh =  Config::get<int>("chi2_thresh");
     //const int lk_half_patch_size = 5;
     //const double lk_photometric_thresh = (lk_half_patch_size * 2) * (lk_half_patch_size * 2) * 15 * 15;
     //const double lk_d2_factor = 1.5 * 1.5; // deviation of median disparity
@@ -105,11 +107,20 @@ private:
         V2d uv_cur;
     };
 
-    void LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before, std::vector<V2d>& kp_after, std::vector<int>& tracked_points);
+    void LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before, std::vector<V2d>& kp_after, std::vector<int>& tracked_points, std::vector<AlignmentPair>& alignment_pairs);
     void LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool>& success, std::vector<V2d>& kp, int level);
     void BA(bool map_only, int fix_cnt);
     void BA_KEY();
     bool IsKeyframe(Keyframe::Ptr keyframe, int nr_tracked_points);
+
+    double CalculateVariance2(const double& nu, const Sophus::SE3d& T21,
+        const std::vector<int>& tracked_points,
+        const std::vector<AlignmentPair>& alignment_pairs);
+    double RemoveOutliers(const Sophus::SE3d& T21,
+        std::vector<int>& tracked_points,
+        std::vector<AlignmentPair>& alignment_pairs);
+
+    void MotionOnlyBA(Sophus::SE3d& T21, std::vector<int>& tracked_points, std::vector<AlignmentPair>& alignment_pairs);
 };
 
 #endif
