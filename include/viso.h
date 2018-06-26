@@ -38,6 +38,7 @@ private:
     const int new_kf_nr_tracked_points = Config::get<int>("new_kf_nr_tracked_points");
     const int new_kf_nr_frames_inbtw = Config::get<int>("new_kf_nr_frames_inbtw");
     const int add_ba = Config::get<int>("do_bundle_adjustment");
+    const int vis = Config::get<int>("visualize_tracking");
     //const int lk_half_patch_size = 5;
     //const double lk_photometric_thresh = (lk_half_patch_size * 2) * (lk_half_patch_size * 2) * 15 * 15;
     //const double lk_d2_factor = 1.5 * 1.5; // deviation of median disparity
