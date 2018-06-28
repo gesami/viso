@@ -74,6 +74,7 @@ public:
     virtual void oplusImpl(const double* update_)
     {
         Eigen::Map<const Eigen::Matrix<double, 6, 1> > update(update_);
+        assert(!update.hasNaN());
         setEstimate(Sophus::SE3d::exp(update) * estimate());
     }
 };
@@ -95,6 +96,10 @@ public:
         //fx = 517.3; fy = 516.5; cx= 325.1; cy=249.7;
         const VertexSBAPointXYZ* p = static_cast<const VertexSBAPointXYZ*>(_vertices[0]);
         const VertexSophus* c = static_cast<const VertexSophus*>(_vertices[1]);
+
+        assert(!p->estimate().hasNaN());
+        assert(!c->estimate().matrix().hasNaN());
+
         V3d global = p->estimate();
         V3d local = c->estimate() * global;
         double u = local[0] * K_(0, 0) / local[2] + K_(0, 2);
@@ -102,9 +107,16 @@ public:
         _error(0, 0) = u - _measurement[0];
         _error(1, 0) = v - _measurement[1];
 
-        assert(!std::isnan(u));
-        assert(!std::isnan(v));
+//        if(robustKernel()) {
+//          V3d rho;
+//          robustKernel()->robustify(_error(0, 0) * _error(0, 0) + _error(1, 0) * _error(1, 0), rho);
+//          assert(!rho.hasNaN());
+//        }
+
+        assert(!std::isnan(_error(0,0)));
+        assert(!std::isnan(_error(1,0)));
     }
+
     virtual bool read(std::istream& /*is*/)
     {
         //cerr << __PRETTY_FUNCTION__ << " not implemented yet" << endl;

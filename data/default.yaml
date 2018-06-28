@@ -1,7 +1,11 @@
 %YAML:1.0
 # data
 # the tum dataset directory, change it to yours! 
+
 dataset_dir: /home/wpy/code/rgbd/
+
+
+# dataset_dir: .
 
 # camera intrinsics
 # fr1
@@ -9,6 +13,11 @@ camera.fx: 517.3
 camera.fy: 516.5
 camera.cx: 325.1
 camera.cy: 249.7
+
+#camera.fx: 458.654
+#camera.fy: 457.296
+#camera.cx: 367.215
+#camera.cy: 248.375
 
 # fr2
 #camera.fx: 520.9
@@ -24,20 +33,26 @@ camera.cy: 249.7
 
 # VO Parameters
 number_of_features: 800
-lk_half_patch_size: 5
-lk_d2_factor: 2.25
+lk_half_patch_size: 8
+lk_d2_factor: 0.9
+lk_photometric_thresh: 40
 BA_iteration: 100
-ba_outlier_thresh: 1
+ba_outlier_thresh: 5
 max_feature: 500
 qualityLevel: 0.01
 minDistance: 10
 grid_size: 10
+do_bundle_adjustment: 1
+visualize_tracking: 0
+do_motion_only_bundle_adjustment: 1
+chi2_thresh: 5.0
 
-# initializuation
-reset_after: 20
+
+# initialization
+reset_after: 15
 iterations: 10
 half_patch_size: 10
-photometric_thresh: 15.0
+photometric_thresh: 20.0
 min_good_cnt: 100
 disparity_thresh: 25.0
 reprojection_thresh: 0.3
@@ -50,6 +65,5 @@ angle_combined_ratio: 0.4
 
 #depth filter
 df_window_size: 5
-
 
 

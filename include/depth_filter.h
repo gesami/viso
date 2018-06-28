@@ -35,9 +35,8 @@ class depth_filter {
     const double min_cov = 0.01; // convergence determination: minimum variance
     const double max_cov = 20; // divergence determination: maximum variance
     int df_window_size;
-    
+
     const double reprojection_thresh_ = Config::get<double>("reprojection_thresh");
-    const int max_iterations = 10;
 
     double fx;
     double fy;
@@ -78,11 +77,6 @@ public:
         }
         df_window_size = Config::get<int>("df_window_size");
         current_iteration_ = 0;
-    }
-
-    bool IsDone()
-    {
-        return current_iteration_ >= max_iterations;
     }
 
     // This should be called, after the filter IsDone() == true
@@ -135,8 +129,6 @@ public:
         } */
 
         cur_frame_ = cur_frame;
-
-        ++current_iteration_;
 
         SE3d pose_curr_TWC = cur_frame->GetPose();
         SE3d pose_T_C_R = pose_curr_TWC * ref_frame_->GetPose().inverse(); // change world coordinate： T_C_W * T_W_R = T_C_R

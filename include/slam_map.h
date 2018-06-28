@@ -17,7 +17,8 @@ private:
     std::vector<MapPoint::Ptr> points_;
     std::mutex mut_;
 
-    ring_buffer<10, Keyframe::Ptr> last_keyframes_;
+    ring_buffer<5, Keyframe::Ptr> last_keyframes_;
+    ring_buffer<5, int> key_index;
     Keyframe::Ptr current_frame_;
 
 public:
@@ -30,6 +31,7 @@ public:
         LOCK();
         keyframes_.push_back(keyframe);
         last_keyframes_.push(keyframe);
+        key_index.push(keyframes_.size()-1);
     }
 
     inline void AddPoint(MapPoint::Ptr map_point)
@@ -48,6 +50,12 @@ public:
     {
         LOCK();
         return last_keyframes_.to_vector();
+    }
+
+    inline std::vector<int> Keyindex()
+    {
+        LOCK();
+        return key_index.to_vector();
     }
 
     inline std::vector<Sophus::SE3d> GetLastPoses()
@@ -107,6 +115,11 @@ public:
     inline Keyframe::Ptr GetCurrent()
     {
         return current_frame_;
+    }
+
+    inline int GetKeyid()
+    {
+        return (keyframes_.size()-1);
     }
 };
 }

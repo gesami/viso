@@ -20,9 +20,10 @@ private:
     std::string time_;
 
     cv::Mat mat_;
-    M3d R_;
-    V3d T_;
+    M3d R_, relatR_; //relative transformation between keyframe
+    V3d T_, relatT_;
     M3d K_;
+    int relatkey_;
 
     const int nr_pyramids_ = 4;
     const double pyramid_scale_ = 0.5;
@@ -62,8 +63,8 @@ public:
         }
 
         //Set grid
-        grid_col_ = ceil(static_cast<double>(mat_.cols / grid_size_));
-        grid_row_ = ceil(static_cast<double>(mat_.rows / grid_size_));
+        grid_col_ = ceil(mat_.cols / (double) grid_size_);
+        grid_row_ = ceil(mat_.rows / (double) grid_size_);
         grid_occupy_.resize(grid_col_*grid_row_, false);
     }
 
@@ -134,6 +135,9 @@ public:
     inline V3d GetT() { return T_; }
     inline void SetT(V3d T) { T_ = T; }
     inline void SetR(M3d R) { R_ = R; }
+    inline void SetrelatT(V3d T) { relatT_ = T; }
+    inline void SetrelatR(M3d R) { relatR_ = R; }
+    inline void SetrelatKey(int a) { relatkey_ = a; }
     inline M3d GetK() { return K_; }
     inline void SetK(M3d K) { K_ = K; }
     inline const std::string& GetTime() { return time_; }
@@ -161,6 +165,7 @@ public:
 
     void SetOccupied(vector<V3d>& wp);
     void SetOccupied();
+    // void SetOccupied(std::vector<V3d> mp);
     void AddNewFeatures(std::vector<cv::KeyPoint> newfts);
 };
 

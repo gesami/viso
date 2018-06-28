@@ -9,88 +9,123 @@ using namespace std;
 
 void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
 {
-    static depth_filter* filter = nullptr;
+    static depth_filter *filter = nullptr;
 
     // TODO: Clean this up.
     cur_frame->SetK(K);
 
-    switch (state_) {
-    case kInitialization: {
+    switch (state_)
+    {
+    case kInitialization:
+    {
         // Visualization
         cv::Mat img;
         cv::cvtColor(cur_frame->Mat(), img, CV_GRAY2BGR);
-        bool initialized = initializer.InitializeMap(cur_frame, &map_, img);
-        cv::imshow("Optical flow", img);
-        cv::waitKey(10);
+        std::string first;
+        bool initialized = initializer.InitializeMap(cur_frame, &map_, img, first);
+        if(vis){
+        cv::imshow("Tracked", img);
+        cv::waitKey(10);}
         if (initialized) {
             state_ = kRunning;
-            // BA(true, 1, {}, {}, {});
-        }
-    } break;
+            BA(true, 1);
+            do_ba_ = false;
+            k2f = Sophus::SE3d(M3d::Identity(), V3d::Zero());
+            f2f = Sophus::SE3d(cur_frame->GetR(), cur_frame->GetT());
+            ///for trajectory record
+            frame_time.push_back(first);
+            ref_key.push_back(0);
+            ref_pose.push_back(k2f);
+            frame_time.push_back(cur_frame->GetTime());
+            ref_key.push_back(1);
+            ref_pose.push_back(k2f);
 
-    case kRunning: {
-        Sophus::SE3d X = Sophus::SE3d(last_frame->GetR(), last_frame->GetT());
+
+            if(add_ba){
+            ba_thread_ = std::thread([&]() {
+                while (running.load()) {
+                    if (do_ba_.load()) {
+                        do_ba_ = false;
+                        BA(true, 2);
+                        //BA_KEY();
+                        usleep(15000);}
+
+                    }
+                });
+            }
+            lkf = cur_frame->GetPose();
+        }
+    }
+    break;
+
+    case kRunning:
+    {
+        std::lock_guard<std::mutex> lock(update_map_);
+        //Sophus::SE3d oX = Sophus::SE3d(last_frame->GetR(), last_frame->GetT()); //Keyframe pose
+        //Sophus::SE3d X = f2f*lf;
+        Sophus::SE3d X = Sophus::SE3d(last_frame->GetR(), last_frame->GetT()); //Keyframe pose
         DirectPoseEstimationMultiLayer(cur_frame, X);
 
         cur_frame->SetR(X.rotationMatrix());
         cur_frame->SetT(X.translation());
 
-        map_.SetCurrent(cur_frame);
-
         std::vector<V2d> kp_before, kp_after;
         std::vector<int> tracked_points;
-        LKAlignment(cur_frame, kp_before, kp_after, tracked_points);
-        
+        std::vector<AlignmentPair> alignment_pairs;
+
+        LKAlignment(cur_frame, kp_before, kp_after, tracked_points, alignment_pairs);
+        RemoveOutliers(X, tracked_points, alignment_pairs);
+        if (add_mba)
+        {
+            if (tracked_points.size() > 9)
+            {
+                MotionOnlyBA(X, tracked_points, alignment_pairs);
+                cur_frame->SetR(X.rotationMatrix());
+                cur_frame->SetT(X.translation());
+            }
+        }
+
+        k2f = X * lkf.inverse();
+        //f2f = X*lf.inverse();
+        map_.SetCurrent(cur_frame);
+
+        frame_time.push_back(cur_frame->GetTime());
+        ref_key.push_back(map_.GetKeyid());
+        ref_pose.push_back(k2f);
 
         // show image
         cv::Mat display;
         cv::cvtColor(cur_frame->Mat(), display, CV_GRAY2BGR);
+        
+        if(vis){
         for (int i = 0; i < kp_after.size(); ++i) {
-            int r = (i % 3) == 0;
-            int g = (i % 3) == 1;
-            int b = (i % 3) == 2;
-            cv::rectangle(display, cv::Point2f(kp_before[i].x() - 4, kp_before[i].y() - 4), cv::Point2f(kp_before[i].x() + 4, kp_before[i].y() + 4),
-                cv::Scalar(255 * b, 255 * g, 255 * r));
             cv::rectangle(display, cv::Point2f(kp_after[i].x() - 4, kp_after[i].y() - 4), cv::Point2f(kp_after[i].x() + 4, kp_after[i].y() + 4),
-                cv::Scalar(255 * b, 255 * g, 255 * r));
+                cv::Scalar(0, 255, 0));
         }
         cv::imshow("Tracked", display);
-        cv::waitKey(0);
+        cv::waitKey(10);}
 
-        // for now there is only one active filter
-        /*
-        if (filter != nullptr) {
-            if (filter->IsDone()) {
-                delete filter;
-                filter = nullptr;
-            } else {
-                filter->Update(cur_frame);
-                filter->UpdateMap(&map_);
-            }
-        } */
-
-        if (IsKeyframe(cur_frame)) {
-            
+        if (IsKeyframe(cur_frame, tracked_points.size()))
+        {
             assert(cur_frame->Keypoints().size() == 0);
             std::vector<cv::KeyPoint> kp;
             map_.AddKeyframe(cur_frame);
-            //BA_KEY();
-            featureDetector->detect(cur_frame->Mat(), kp);
-            vector<V3d> wp = map_.GetPoints3d(); //world points
-            std::cout<< " Clearing the grids" << std::endl;
-            cur_frame->SetOccupied( wp );
-            cur_frame->AddNewFeatures(kp);
-
             vector<MapPoint::Ptr> map_points = map_.GetPoints();
 
-            // TODO: 
-            for (int i = 0; i < tracked_points.size(); ++i) {
+            for (int i = 0; i < tracked_points.size(); ++i)
+            {
                 cv::KeyPoint kp;
                 kp.pt.x = kp_after[i].x();
                 kp.pt.y = kp_after[i].y();
                 int kp_idx = cur_frame->AddKeypoint(kp);       // add the keypoints one by one 
                 map_points[tracked_points[i]]->AddObservation(cur_frame, kp_idx);   // saved in map: world point coordinate, corresponding frame, position of point kp array 
             }
+            //BA_KEY();
+            featureDetector->detect(cur_frame->Mat(), kp);
+            vector<V3d> wp = map_.GetPoints3d(); //world points
+            std::cout<< " Clearing the grids" << std::endl;
+            cur_frame->SetOccupied( wp );
+            cur_frame->AddNewFeatures(kp);
 
             // TODO: initializing a new depth filter
             if (filter != nullptr) {
@@ -100,28 +135,32 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
                 filter = new depth_filter(cur_frame);   
             }
             std::cout << "New keyframe added!\n";
-
-            //BA(true, 2, {}, {}, {});
             //BA_KEY();
-        } else{  
-            // TODO stop updating the depth filter if the motion is too small
-            if (filter != nullptr) {   
-                if( GetMotion(cur_frame) < 0.05 ){
-                    
-                }else{
-                //std::cout << "motion value" <<  GetMotion(cur_frame) << std::endl;
-                    filter->Update(cur_frame);
-                    filter->UpdateMap( &map_, cur_frame );
-                }
-            }
+            do_ba_ = true;
+            cout << "set k2f" << endl;
+            k2f = Sophus::SE3d(M3d::Identity(), V3d::Zero());
+            lkf = cur_frame->GetPose();
+            cout << "set last frame" << endl;
+            //last_frame = cur_frame;
+        }else{  
+            // TODO stop updating the depth filter if the motion is too small
+            if (filter != nullptr) {   
+                if( GetMotion(cur_frame) < 0.05 ){
+                    
+                }else{
+                //std::cout << "motion value" <<  GetMotion(cur_frame) << std::endl;
+                    filter->Update(cur_frame);
+                    filter->UpdateMap( &map_, cur_frame );
+                }
+            }
         }
-
-    } break;
+    }
+    break;
 
     default:
         break;
     }
-
+    lf = Sophus::SE3d(cur_frame->GetR(), cur_frame->GetT());
     last_frame = cur_frame;
 }
 
@@ -246,8 +285,8 @@ void Viso::SelectMotion(const std::vector<V3d>& p1,
 }
 #endif
 
-M26d dPixeldXi(const M3d& K, const M3d& R, const V3d& T, const V3d& P,
-    const double& scale)
+M26d dPixeldXi(const M3d &K, const M3d &R, const V3d &T, const V3d &P,
+               const double &scale)
 {
     V3d Pc = R * P + T;
     double x = Pc.x();
@@ -268,8 +307,8 @@ M26d dPixeldXi(const M3d& K, const M3d& R, const V3d& T, const V3d& P,
 
 // TODO: Move this to a separate class.
 void Viso::DirectPoseEstimationSingleLayer(int level,
-    Keyframe::Ptr current_frame,
-    Sophus::SE3d& T21)
+                                           Keyframe::Ptr current_frame,
+                                           Sophus::SE3d &T21)
 {
     const double scale = Keyframe::scales[level];
     const double delta_thresh = 0.005;
@@ -282,7 +321,8 @@ void Viso::DirectPoseEstimationSingleLayer(int level,
 
     Sophus::SE3d best_T21 = T21;
 
-    for (int iter = 0; iter < iterations; iter++) {
+    for (int iter = 0; iter < iterations; iter++)
+    {
         nGood = 0;
 
         // Define Hessian and bias
@@ -292,7 +332,8 @@ void Viso::DirectPoseEstimationSingleLayer(int level,
         current_frame->SetR(T21.rotationMatrix());
         current_frame->SetT(T21.translation());
 
-        for (size_t i = 0; i < map_.GetPoints().size(); i++) {
+        for (size_t i = 0; i < map_.GetPoints().size(); i++)
+        {
 
             V3d P1 = map_.GetPoints()[i]->GetWorldPos();
 
@@ -309,25 +350,28 @@ void Viso::DirectPoseEstimationSingleLayer(int level,
             assert(!hasNaN);
 
             bool good = frame->IsInside(u_ref - lk_half_patch_size,
-                            v_ref - lk_half_patch_size, level)
-                && frame->IsInside(u_ref + lk_half_patch_size,
-                       v_ref + lk_half_patch_size, level)
-                && current_frame->IsInside(u_cur - lk_half_patch_size,
-                       v_cur - lk_half_patch_size, level)
-                && current_frame->IsInside(u_cur + lk_half_patch_size,
-                       v_cur + lk_half_patch_size, level);
+                                        v_ref - lk_half_patch_size, level) &&
+                        frame->IsInside(u_ref + lk_half_patch_size,
+                                        v_ref + lk_half_patch_size, level) &&
+                        current_frame->IsInside(u_cur - lk_half_patch_size,
+                                                v_cur - lk_half_patch_size, level) &&
+                        current_frame->IsInside(u_cur + lk_half_patch_size,
+                                                v_cur + lk_half_patch_size, level);
 
-            if (!good) {
+            if (!good)
+            {
                 continue;
             }
 
             nGood++;
 
             M26d J_pixel_xi = dPixeldXi(K, T21.rotationMatrix(), T21.translation(),
-                P1, scale); // pixel to \xi in Lie algebra
+                                        P1, scale); // pixel to \xi in Lie algebra
 
-            for (int x = -lk_half_patch_size; x < lk_half_patch_size; x++) {
-                for (int y = -lk_half_patch_size; y < lk_half_patch_size; y++) {
+            for (int x = -lk_half_patch_size; x < lk_half_patch_size; x++)
+            {
+                for (int y = -lk_half_patch_size; y < lk_half_patch_size; y++)
+                {
                     double error = frame->GetPixelValue(u_ref + x, v_ref + y, level) - current_frame->GetPixelValue(u_cur + x, v_cur + y, level);
                     V2d J_img_pixel = current_frame->GetGradient(u_cur + x, v_cur + y, level);
                     V6d J = -J_img_pixel.transpose() * J_pixel_xi;
@@ -345,17 +389,20 @@ void Viso::DirectPoseEstimationSingleLayer(int level,
 
         cost /= nGood;
 
-        if (std::isnan(update[0])) {
+        if (std::isnan(update[0]))
+        {
             T21 = best_T21;
             break;
         }
 
-        if (iter > 0 && cost > lastCost) {
+        if (iter > 0 && cost > lastCost)
+        {
             T21 = best_T21;
             break;
         }
 
-        if ((1 - cost / (double)lastCost) < delta_thresh) {
+        if ((1 - cost / (double)lastCost) < delta_thresh)
+        {
             break;
         }
 
@@ -365,25 +412,28 @@ void Viso::DirectPoseEstimationSingleLayer(int level,
 }
 
 void Viso::DirectPoseEstimationMultiLayer(Keyframe::Ptr current_frame,
-    Sophus::SE3d& T21)
+                                          Sophus::SE3d &T21)
 {
-    for (int level = 3; level >= 0; level--) {
+    for (int level = 3; level >= 0; level--)
+    {
         DirectPoseEstimationSingleLayer(level, current_frame, T21);
     }
 }
 
-void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before, std::vector<V2d>& kp_after, std::vector<int>& tracked_points)
+void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d> &kp_before, std::vector<V2d> &kp_after, std::vector<int> &tracked_points,
+                       std::vector<AlignmentPair> &alignment_pairs)
 {
-    std::vector<AlignmentPair> alignment_pairs;
-
     const double max_angle = 180.0; // 180 means basically no restriction on the angle (for now)
+    assert(alignment_pairs.size() == 0);
 
-    for (size_t i = 0; i < map_.GetPoints().size(); i++) {
+    for (size_t i = 0; i < map_.GetPoints().size(); i++)
+    {
 
         MapPoint::Ptr map_point = map_.GetPoints()[i];
         V3d Pw = map_point->GetWorldPos();
 
-        if (!current_frame->IsInside(Pw, /*level=*/0)) {
+        if (!current_frame->IsInside(Pw, /*level=*/0))
+        {
             continue;
         }
 
@@ -393,26 +443,26 @@ void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before,
         Keyframe::Ptr best_keyframe;
         V2d best_uv_ref;
 
-        const std::vector<std::pair<Keyframe::Ptr, int> >& observations = map_point->GetObservations();
+        const std::vector<std::pair<Keyframe::Ptr, int>> &observations = map_point->GetObservations();
 
-        for (int j = 0; j < observations.size(); ++j) {
+        for (int j = 0; j < observations.size(); ++j)
+        {
             Keyframe::Ptr frame = observations[j].first;
 
             double angle = std::abs(frame->ViewingAngle(Pw) / CV_PI * 180);
-            if (angle > max_angle || angle > best_angle) {
+            if (angle > max_angle || angle > best_angle)
+            {
                 continue;
             }
 
             best_angle = angle;
             best_frame_idx = j;
-            best_uv_ref = V2d{ frame->Keypoints()[observations[j].second].pt.x, frame->Keypoints()[observations[j].second].pt.y };
+            best_uv_ref = V2d{frame->Keypoints()[observations[j].second].pt.x, frame->Keypoints()[observations[j].second].pt.y};
             best_keyframe = frame;
-
-            // For now take the first observation.
-            break;
         }
 
-        if (best_frame_idx == -1) {
+        if (best_frame_idx == -1)
+        {
             continue;
         }
 
@@ -426,20 +476,25 @@ void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before,
         tracked_points.push_back(i);
     }
 
-    std::vector<bool> success;
-
-    for (int i = 0; i < alignment_pairs.size(); ++i) {
+    for (int i = 0; i < alignment_pairs.size(); ++i)
+    {
         kp_before.push_back(alignment_pairs[i].uv_cur);
     }
 
-    for (int level = Keyframe::nr_pyramids - 1; level >= 0; --level) {
+    std::vector<bool> success(alignment_pairs.size(), false);
+    kp_after = std::vector<V2d>(kp_before.size(), V2d{0.0, 0.0});
+
+    for (int level = Keyframe::nr_pyramids - 1; level >= 0; --level)
+    {
         LKAlignmentSingle(alignment_pairs, success, kp_after, level);
     }
 
     // reduce tracking outliers
     std::vector<double> d2;
-    for (int i = 0; i < kp_before.size(); ++i) {
-        if (success[i]) {
+    for (int i = 0; i < kp_before.size(); ++i)
+    {
+        if (success[i])
+        {
             double dx = kp_after[i].x() - kp_before[i].x();
             double dy = kp_after[i].y() - kp_before[i].y();
             d2.push_back(dx * dx + dy * dy);
@@ -449,9 +504,12 @@ void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before,
     double median_d2 = CalculateMedian(d2);
 
     int j = 0;
-    for (int i = 0; i < kp_before.size(); ++i) {
-        if (success[i]) {
-            if (d2[j] > median_d2 * lk_d2_factor) {
+    for (int i = 0; i < kp_before.size(); ++i)
+    {
+        if (success[i])
+        {
+            if (d2[j] > median_d2 * lk_d2_factor)
+            {
                 success[i] = false;
             }
             ++j;
@@ -463,55 +521,71 @@ void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before,
     int i = 0;
     auto iter2 = kp_after.begin();
     auto iter3 = tracked_points.begin();
-    for (auto iter1 = kp_before.begin(); iter1 != kp_before.end(); ++i) {
-        if (!success[i]) {
+    auto iter4 = alignment_pairs.begin();
+    for (auto iter1 = kp_before.begin(); iter1 != kp_before.end(); ++i)
+    {
+        if (!success[i])
+        {
             iter1 = kp_before.erase(iter1);
             iter2 = kp_after.erase(iter2);
             iter3 = tracked_points.erase(iter3);
-        } else {
+            iter4 = alignment_pairs.erase(iter4);
+        }
+        else
+        {
             ++iter1;
             ++iter2;
             ++iter3;
+            ++iter4;
         }
     }
 }
 
-void Viso::LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool>& success, std::vector<V2d>& kp, int level)
+// kp
+void Viso::LKAlignmentSingle(std::vector<AlignmentPair> &pairs, std::vector<bool> &success, std::vector<V2d> &kp, int level)
 {
     // parameters
-    const bool inverse = true;
+    const bool inverse = false;
     const int iterations = 100;
 
-    success.clear();
-    kp.clear();
+    assert(pairs.size() == success.size());
+    assert(success.size() == kp.size());
 
-    for (size_t i = 0; i < pairs.size(); i++) {
-        AlignmentPair& pair = pairs[i];
+    for (size_t i = 0; i < pairs.size(); i++)
+    {
+        AlignmentPair &pair = pairs[i];
 
         double dx = 0, dy = 0; // dx,dy need to be estimated
         double cost = 0, lastCost = 0;
         bool succ = true; // indicate if this point succeeded
 
         // Gauss-Newton iterations
-        for (int iter = 0; iter < iterations; iter++) {
+        for (int iter = 0; iter < iterations; iter++)
+        {
             Eigen::Matrix2d H = Eigen::Matrix2d::Zero();
             Eigen::Vector2d b = Eigen::Vector2d::Zero();
             cost = 0;
 
             if (
-                !pair.ref_frame->IsInside(pair.uv_ref.x() * Keyframe::scales[level] + dx - lk_half_patch_size, pair.uv_ref.y() * Keyframe::scales[level] + dy - lk_half_patch_size, level) || !pair.ref_frame->IsInside(pair.uv_ref.x() * Keyframe::scales[level] + dx + lk_half_patch_size, pair.uv_ref.y() * Keyframe::scales[level] + dy + lk_half_patch_size, level)) {
+                !pair.ref_frame->IsInside(pair.uv_ref.x() * Keyframe::scales[level] - std::abs(dx) - lk_half_patch_size - 1, pair.uv_ref.y() * Keyframe::scales[level] - std::abs(dy) - lk_half_patch_size - 1, level) || !pair.ref_frame->IsInside(pair.uv_ref.x() * Keyframe::scales[level] + std::abs(dx) + lk_half_patch_size + 1, pair.uv_ref.y() * Keyframe::scales[level] + std::abs(dy) + lk_half_patch_size + 1, level))
+            {
                 succ = false;
                 break;
             }
 
             double error = 0;
             // compute cost and jacobian
-            for (int x = -lk_half_patch_size; x < lk_half_patch_size; x++) {
-                for (int y = -lk_half_patch_size; y < lk_half_patch_size; y++) {
+            for (int x = -lk_half_patch_size; x < lk_half_patch_size; x++)
+            {
+                for (int y = -lk_half_patch_size; y < lk_half_patch_size; y++)
+                {
                     V2d J;
-                    if (!inverse) {
+                    if (!inverse)
+                    {
                         J = -pair.cur_frame->GetGradient(pair.uv_cur.x() * Keyframe::scales[level] + x + dx, pair.uv_cur.y() * Keyframe::scales[level] + y + dy, level);
-                    } else {
+                    }
+                    else
+                    {
                         J = -pair.ref_frame->GetGradient(pair.uv_ref.x() * Keyframe::scales[level] + x, pair.uv_ref.y() * Keyframe::scales[level] + y, level);
                     }
                     error = pair.ref_frame->GetPixelValue(pair.uv_ref.x() * Keyframe::scales[level] + x, pair.uv_ref.y() * Keyframe::scales[level] + y, level) - pair.cur_frame->GetPixelValue(pair.uv_cur.x() * Keyframe::scales[level] + x + dx, pair.uv_cur.y() * Keyframe::scales[level] + y + dy, level);
@@ -525,11 +599,14 @@ void Viso::LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool
 
             V2d update = H.inverse() * b;
 
-            if (std::isnan(update[0])) {
+            if (std::isnan(update[0]))
+            {
                 succ = false;
                 break;
             }
-            if (iter > 0 && cost > lastCost) {
+
+            if (iter > 0 && cost > lastCost)
+            {
                 break;
             }
 
@@ -538,51 +615,61 @@ void Viso::LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool
             dy += update[1];
             lastCost = cost;
 
-            if (lastCost > lk_photometric_thresh) {
+            if (lastCost > lk_photometric_thresh)
+            {
                 succ = false;
-            } else {
+            }
+            else
+            {
                 succ = true;
             }
         }
 
-        success.push_back(succ);
-        pair.uv_cur += V2d{ dx / Keyframe::scales[level], dy / Keyframe::scales[level] };
+        success[i] = success[i] || succ;
+
+        // Only update if succeeded. Otherwise we want to keep the old value.
+        if (succ)
+        {
+            pair.uv_cur += V2d{dx / Keyframe::scales[level], dy / Keyframe::scales[level]};
+        }
     }
 
-    for (int i = 0; i < pairs.size(); ++i) {
-        kp.push_back(pairs[i].uv_cur);
+    for (int i = 0; i < pairs.size(); ++i)
+    {
+        kp[i] = pairs[i].uv_cur;
     }
 }
 
-void Viso::BA(bool map_only, int fix_cnt, Keyframe::Ptr current_frame, const std::vector<V2d>& kp, const std::vector<int>& tracked_points)
+void Viso::BA(bool map_only, int fix_cnt)
 {
-    using KernelType = g2o::RobustKernelTukey;
+    using KernelType = g2o::RobustKernelHuber;
 
     std::cout << "start BA" << std::endl;
     // build optimization problem
     // setup g2o
-    typedef g2o::BlockSolver<g2o::BlockSolverTraits<6, 3> > Block; // pose is 6x1, landmark is 3x1
+    typedef g2o::BlockSolver<g2o::BlockSolverTraits<6, 3>> Block; // pose is 6x1, landmark is 3x1
     std::unique_ptr<Block::LinearSolverType> linearSolver(
         new g2o::LinearSolverDense<Block::PoseMatrixType>()); // linear solver
 
     // use levernberg-marquardt here (or you can choose gauss-newton)
-    g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(
+    g2o::OptimizationAlgorithmLevenberg *solver = new g2o::OptimizationAlgorithmLevenberg(
         g2o::make_unique<Block>(std::move(linearSolver)));
     g2o::SparseOptimizer optimizer; // graph optimizer
     optimizer.setAlgorithm(solver); // solver
-    optimizer.setVerbose(false); // open the output
+    optimizer.setVerbose(false);    // open the output
 
-    std::vector<VertexSBAPointXYZ*> points_v;
-    std::vector<VertexSophus*> cameras_v;
+    std::vector<VertexSBAPointXYZ *> points_v;
+    std::vector<VertexSophus *> cameras_v;
     int id = 0;
-    int tracked_idx = 0;
 
-    for (size_t i = 0; i < map_.GetPoints().size(); i++, id++) { //for each mappoint
-        MapPoint::Ptr mp = map_.GetPoints()[i];
-        VertexSBAPointXYZ* p = new VertexSBAPointXYZ();
+    std::vector<MapPoint::Ptr> map_points = map_.GetPoints();
+
+    for (size_t i = 0; i < map_points.size(); i++, id++)
+    { //for each mappoint
+        VertexSBAPointXYZ *p = new VertexSBAPointXYZ();
         p->setId(id);
         p->setMarginalized(true);
-        p->setEstimate(mp->GetWorldPos());
+        p->setEstimate(map_points[i]->GetWorldPos());
         optimizer.addVertex(p);
         points_v.push_back(p);
     }
@@ -590,32 +677,28 @@ void Viso::BA(bool map_only, int fix_cnt, Keyframe::Ptr current_frame, const std
     std::vector<Keyframe::Ptr> keyframes = map_.Keyframes();
     std::map<int, int> keyframe_indices;
 
-    for (size_t i = 0; i < keyframes.size(); i++, id++) {
-        VertexSophus* cam = new VertexSophus();
+    for (size_t i = 0; i < keyframes.size(); i++, id++)
+    {
+        VertexSophus *cam = new VertexSophus();
         cam->setId(id);
-        if (i < fix_cnt) {
+        if (i < fix_cnt)
+        {
             cam->setFixed(true); //fix the pose of the first frame
         }
         cam->setEstimate(keyframes[i]->GetPose());
         optimizer.addVertex(cam);
         cameras_v.push_back(cam);
-        keyframe_indices.insert({ keyframes[i]->GetId(), i });
+        keyframe_indices.insert({keyframes[i]->GetId(), i});
     }
 
-    if (!map_only) {
-        VertexSophus* cam = new VertexSophus();
-        cam->setId(id);
-        cam->setEstimate(current_frame->GetPose());
-        optimizer.addVertex(cam);
-        cameras_v.push_back(cam);
-    }
-
-    for (size_t i = 0; i < map_.GetPoints().size(); i++) {
+    for (size_t i = 0; i < map_points.size(); i++)
+    {
         //std::cout << i << "th mappint" << std::endl;
-        MapPoint::Ptr mp = map_.GetPoints()[i];
-        for (size_t j = 0; j < mp->GetObservations().size(); j++, id++) { //for each observation
+        MapPoint::Ptr mp = map_points[i];
+        for (size_t j = 0; j < mp->GetObservations().size(); j++, id++)
+        { //for each observation
             std::pair<Keyframe::Ptr, int> obs = mp->GetObservations()[j];
-            EdgeObservation* e = new EdgeObservation(K);
+            EdgeObservation *e = new EdgeObservation(K);
             e->setVertex(0, points_v[i]);
             e->setVertex(1, cameras_v[keyframe_indices.find(obs.first->GetId())->second]);
             e->setInformation(Eigen::Matrix2d::Identity()); //intensity is a scale?
@@ -623,25 +706,10 @@ void Viso::BA(bool map_only, int fix_cnt, Keyframe::Ptr current_frame, const std
             V2d xy(obs.first->Keypoints()[idx].pt.x, obs.first->Keypoints()[idx].pt.y);
             e->setMeasurement(xy);
             e->setId(id);
-            KernelType* robustKernel = new KernelType();
+            KernelType *robustKernel = new KernelType();
             robustKernel->setDelta(ba_outlier_thresh);
             e->setRobustKernel(robustKernel);
             optimizer.addEdge(e);
-        }
-
-        if (!map_only && tracked_idx < tracked_points.size() && tracked_points[tracked_idx] == i) {
-            EdgeObservation* e = new EdgeObservation(K);
-            e->setVertex(0, points_v[i]);
-            e->setVertex(1, cameras_v[cameras_v.size() - 1]);
-            e->setInformation(Eigen::Matrix2d::Identity()); //intensity is a scale?
-            e->setMeasurement(kp[tracked_idx]);
-            e->setId(id);
-            KernelType* robustKernel = new KernelType();
-            robustKernel->setDelta(ba_outlier_thresh);
-            e->setRobustKernel(robustKernel);
-            optimizer.addEdge(e);
-
-            ++tracked_idx;
         }
     }
 
@@ -651,56 +719,47 @@ void Viso::BA(bool map_only, int fix_cnt, Keyframe::Ptr current_frame, const std
     optimizer.optimize(BA_iteration);
     std::cout << "end!" << std::endl;
 
-    poses_opt.clear();
-    poses.clear();
-    for (int i = 0; i < keyframes.size(); i++) {
-        VertexSophus* pose = dynamic_cast<VertexSophus*>(optimizer.vertex(map_.GetPoints().size() + i));
-        Sophus::SE3d p_opt = pose->estimate();
+    {
+        std::lock_guard<std::mutex> lock(update_map_);
 
-        poses.push_back(keyframes[i]->GetPose());
-        keyframes[i]->SetPose(p_opt);
-        poses_opt.push_back(p_opt);
-    }
+        for (int i = 0; i < keyframes.size(); i++)
+        {
+            VertexSophus *pose = cameras_v[i];
+            Sophus::SE3d p_opt = pose->estimate();
+            map_.Keyframes()[i]->SetPose(p_opt);
+            ;
+        }
 
-    if (!map_only) {
-        VertexSophus* pose = cameras_v[cameras_v.size() - 1];
-        poses.push_back(current_frame->GetPose());
-        current_frame->SetPose(pose->estimate());
-        poses_opt.push_back(pose->estimate());
-    }
-
-    points_opt.clear();
-    for (int i = 0; i < map_.GetPoints().size(); i++) {
-        VertexSBAPointXYZ* point = dynamic_cast<VertexSBAPointXYZ*>(optimizer.vertex(i));
-        V3d point_opt = point->estimate();
-        map_.GetPoints()[i]->SetWorldPos(point_opt);
-        //points_opt.push_back(point_opt);
+        for (int i = 0; i < map_points.size(); i++)
+        {
+            VertexSBAPointXYZ *point = points_v[i];
+            V3d point_opt = point->estimate();
+            map_.GetPoints()[i]->SetWorldPos(point_opt);
+        }
     }
 }
 
 void Viso::BA_KEY()
 {
-    using KernelType = g2o::RobustKernelTukey;
+    using KernelType = g2o::RobustKernelHuber;
 
     std::cout << "start BA for only keyframes" << std::endl;
     // build optimization problem
     // setup g2o
-    typedef g2o::BlockSolver<g2o::BlockSolverTraits<6, 3> > Block; // pose is 6x1, landmark is 3x1
+    typedef g2o::BlockSolver<g2o::BlockSolverTraits<6, 3>> Block; // pose is 6x1, landmark is 3x1
     std::unique_ptr<Block::LinearSolverType> linearSolver(
         new g2o::LinearSolverDense<Block::PoseMatrixType>()); // linear solver
 
     // use levernberg-marquardt here (or you can choose gauss-newton)
-    g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(
+    g2o::OptimizationAlgorithmLevenberg *solver = new g2o::OptimizationAlgorithmLevenberg(
         g2o::make_unique<Block>(std::move(linearSolver)));
     g2o::SparseOptimizer optimizer; // graph optimizer
     optimizer.setAlgorithm(solver); // solver
-    optimizer.setVerbose(false); // open the output
+    optimizer.setVerbose(false);    // open the output
 
-    std::vector<VertexSBAPointXYZ*> points_v;
-    std::vector<VertexSophus*> cameras_v;
+    std::vector<VertexSBAPointXYZ *> points_v;
+    std::vector<VertexSophus *> cameras_v;
     int id = 0;
-    int tracked_idx = 0;
-
     /*for (size_t i = 0; i < map_.GetPoints().size(); i++, id++) { //for each mappoint
         MapPoint::Ptr mp = map_.GetPoints()[i];
         VertexSBAPointXYZ* p = new VertexSBAPointXYZ();
@@ -713,59 +772,68 @@ void Viso::BA_KEY()
     }*/
 
     std::vector<Keyframe::Ptr> keyframes = map_.LastKeyframes();
+    vector<int> tracked_idx = map_.Keyindex();
     std::map<int, int> keyframe_indices;
-
-    for (size_t i = 0; i < keyframes.size(); i++, id++) {
-        VertexSophus* cam = new VertexSophus();
+    for (size_t i = 0; i < keyframes.size(); i++, id++)
+    {
+        VertexSophus *cam = new VertexSophus();
         cam->setId(id);
-        if (i < 2) {
+        if (i < 1) {
             cam->setFixed(true); //fix the pose of the first frame
         }
         cam->setEstimate(keyframes[i]->GetPose());
         optimizer.addVertex(cam);
         cameras_v.push_back(cam);
-        keyframe_indices.insert({ keyframes[i]->GetId(), i });
-        cout << "add " << keyframes[i]->GetId() << "frames" << endl;
+        keyframe_indices.insert({keyframes[i]->GetId(), i});
+        cout << "add " << keyframes[i]->GetId()<< " "<< tracked_idx[i] << "frames" << endl;
         cout << keyframes[i]->GetPose().matrix() << endl;
     }
 
     bool point_obs;
     vector<int> pvertex_id;
-    vector<vector<pair<int, V2d> > > obsvector;
-    for (size_t i = 0; i < map_.GetPoints().size(); i++) {
+    vector<vector<pair<int, V2d>>> obsvector;
+    for (size_t i = 0; i < map_.GetPoints().size(); i++)
+    {
         MapPoint::Ptr mp = map_.GetPoints()[i];
         point_obs = false;
-        vector<pair<int, V2d> > pobs;
-        for (size_t j = 0; j < mp->GetObservations().size(); j++) { //for each observation
+        vector<pair<int, V2d>> pobs;
+        for (size_t j = 0; j < mp->GetObservations().size(); j++)
+        { //for each observation
             std::pair<Keyframe::Ptr, int> obs = mp->GetObservations()[j];
             std::map<int, int>::iterator find_idx = keyframe_indices.find(obs.first->GetId());
             if (find_idx != keyframe_indices.end()) { //add edges if the observation exist in the lastest keyframe
                 if (!point_obs) { //add point vertex if the point is observed in the lastest keyframe
-                    VertexSBAPointXYZ* p = new VertexSBAPointXYZ();
-                    p->setId(id);
-                    p->setMarginalized(true);
-                    p->setEstimate(mp->GetWorldPos());
-                    optimizer.addVertex(p);
-                    points_v.push_back(p);
-                    id++;
                     point_obs = true;
-                }
+                } 
                 int idx = obs.second;
                 V2d xy(obs.first->Keypoints()[idx].pt.x, obs.first->Keypoints()[idx].pt.y);
-                pobs.push_back({ find_idx->second, xy });
+                //cout << "point: " << (id-keyframes.size()) << " observed in: " <<  find_idx->second << "(" << obs.first->GetId() << " measurement: " << xy.transpose()<< endl;
+                pobs.push_back({find_idx->second, xy});
             }
         }
-        if (point_obs) {
+        if (point_obs)
+        {
             obsvector.push_back(pobs);
             pvertex_id.push_back(i);
+            VertexSBAPointXYZ* p = new VertexSBAPointXYZ();
+            p->setId(id);
+            p->setMarginalized(true);
+            p->setEstimate(mp->GetWorldPos());
+            optimizer.addVertex(p);
+            points_v.push_back(p);
+            //cout << "point: " << i << " id: " << id << endl;
+            id++; 
         }
     }
-    for (int i = 0; i < pvertex_id.size(); i++) {
-        for (int j = 0; j < obsvector[i].size(); j++) {
-            cout << "add edge for " << obsvector[i][j].first << " th frame and measurement: " << obsvector[i][j].second.transpose() << endl;
-            EdgeObservation* e = new EdgeObservation(K);
+    for (int i = 0; i < pvertex_id.size(); i++)
+    {
+        for (int j = 0; j < obsvector[i].size(); j++)
+        {
+            //cout << "add edge for " << obsvector[i][j].first << " th frame and measurement: " << obsvector[i][j].second.transpose() << endl;
+            EdgeObservation *e = new EdgeObservation(K);
             e->setVertex(0, points_v[i]);
             e->setVertex(1, cameras_v[obsvector[i][j].first]);
+            //cout << "EDGE point: " << i << " observed in: " <<  obsvector[i][j].first << " measurement: " << obsvector[i][j].second.transpose()<< endl;
             e->setInformation(Eigen::Matrix2d::Identity()); //intensity is a scale?
             e->setMeasurement(obsvector[i][j].second);
             KernelType* robustKernel = new KernelType();
@@ -781,10 +849,13 @@ void Viso::BA_KEY()
     optimizer.optimize(BA_iteration);
     std::cout << "end!" << std::endl;
 
-    for (int i = 0; i < keyframes.size(); i++) {
-        VertexSophus* pose = dynamic_cast<VertexSophus*>(optimizer.vertex(i));
+    for (int i = 0; i < keyframes.size(); i++)
+    {
+        VertexSophus *pose = dynamic_cast<VertexSophus *>(optimizer.vertex(i));
         Sophus::SE3d p_opt = pose->estimate();
-        keyframes[i]->SetPose(p_opt);
+        cout << "optimized frame: " << i << "(" << map_.LastKeyframes()[i]->GetId() << " " << tracked_idx[i] << endl;
+        map_.Keyframes()[tracked_idx[i]]->SetPose(p_opt);
+        //keyframes()[i]->SetPose(p_opt);
     }
     /*for (int i = 0; i < map_.GetPoints().size(); i++) {
         VertexSBAPointXYZ* point = dynamic_cast<VertexSBAPointXYZ*>(optimizer.vertex(i));
@@ -792,21 +863,28 @@ void Viso::BA_KEY()
         map_.GetPoints()[i]->SetWorldPos(point_opt);
         //points_opt.push_back(point_opt);
     }*/
+
     for (int i = 0; i < points_v.size(); i++) {
         VertexSBAPointXYZ* point = dynamic_cast<VertexSBAPointXYZ*>(optimizer.vertex(keyframes.size() + i));
+        //cout << "change point: " << pvertex_id[i] << " id:" << keyframes.size() + i << endl;
         map_.GetPoints()[pvertex_id[i]]->SetWorldPos(point->estimate());
     }
 }
 
-bool Viso::IsKeyframe(Keyframe::Ptr cur_frame)
+bool Viso::IsKeyframe(Keyframe::Ptr cur_frame, int nr_tracked_points)
 {
+    if (nr_tracked_points < 10)
+    {
+        return false;
+    }
     V3d last_T = map_.GetLastPose().translation();
     V3d cur_T = cur_frame->GetT();
     V3d delta_T = (cur_T - last_T);
 
     double distance = delta_T.norm();
 
-    if (distance > new_kf_dist_thresh) {
+    if (distance > new_kf_dist_thresh)
+    {
         std::cout << "IsKeyframe distance: " << distance << "\n";
         return true;
     }
@@ -814,10 +892,11 @@ bool Viso::IsKeyframe(Keyframe::Ptr cur_frame)
     M3d last_R = map_.GetLastPose().rotationMatrix();
     M3d cur_R = cur_frame->GetR();
     M3d delta_R = cur_R.transpose() * last_R;
-
+ 
     double angle = std::abs(std::acos((delta_R(0, 0) + delta_R(1, 1) + delta_R(2, 2) - 1) * 0.5));
 
-    if (angle > new_kf_angle_thresh) {
+    if (angle > new_kf_angle_thresh)
+    {
         std::cout << "IsKeyframe angle: " << angle << "\n";
         return true;
     }
@@ -829,6 +908,7 @@ bool Viso::IsKeyframe(Keyframe::Ptr cur_frame)
 
     return false;
 }
+
 
 double Viso::GetMotion(Keyframe::Ptr cur_frame)
 {
@@ -845,3 +925,144 @@ double Viso::GetMotion(Keyframe::Ptr cur_frame)
     return ( distance + angle_combined_ratio*angle);
 }
 
+
+double Viso::CalculateVariance2(const double &nu, const Sophus::SE3d &T21,
+                                const std::vector<int> &tracked_points,
+                                const std::vector<AlignmentPair> &alignment_pairs)
+{
+    const double n = tracked_points.size();
+    const int max_iterations = 100;
+    const double eps = 0.0001;
+
+    double sigma2 = 0.0;
+    double old_sigma2 = 1.0;
+
+    std::vector<MapPoint::Ptr> map_points = map_.GetPoints();
+
+    int iter = 0;
+    for (; iter < max_iterations; ++iter)
+    {
+        sigma2 = 0.0;
+
+        for (int i = 0; i < tracked_points.size(); ++i)
+        {
+            V3d global = map_points[tracked_points[i]]->GetWorldPos();
+            V3d local = T21 * global;
+            V2d uv = V2d{local[0] * K(0, 0) / local[2] + K(0, 2), local[1] * K(1, 1) / local[2] + K(1, 2)};
+            V2d error = (V2d)(alignment_pairs[i].uv_cur - uv);
+            double chi2 = error.transpose() * error;
+            sigma2 += chi2 * (nu + 1) / (nu + chi2 / old_sigma2);
+        }
+
+        sigma2 /= n;
+
+        if (iter > 0 && std::abs(sigma2 - old_sigma2) / old_sigma2 < eps)
+        {
+            break;
+        }
+
+        old_sigma2 = sigma2;
+    }
+
+    //    cout << "Sigma : " << sigma2 << ", iterations: " << (iter + 1) << "\n";
+
+    return sigma2;
+}
+
+double Viso::RemoveOutliers(const Sophus::SE3d &T21,
+                            std::vector<int> &tracked_points,
+                            std::vector<AlignmentPair> &alignment_pairs)
+{
+    std::vector<MapPoint::Ptr> map_points = map_.GetPoints();
+    auto iter1 = alignment_pairs.begin();
+    for (auto iter = tracked_points.begin(); iter != tracked_points.end();)
+    {
+
+        V3d global = map_points[*iter]->GetWorldPos();
+        V3d local = T21 * global;
+        V2d uv = V2d{local[0] * K(0, 0) / local[2] + K(0, 2), local[1] * K(1, 1) / local[2] + K(1, 2)};
+        V2d error = (V2d)((*iter1).uv_cur - uv);
+        double chi2 = error.transpose() * error;
+
+        if (chi2 > chi2_thresh)
+        {
+            iter1 = alignment_pairs.erase(iter1);
+            iter = tracked_points.erase(iter);
+        }
+        else
+        {
+            ++iter;
+            ++iter1;
+        }
+    }
+}
+
+void Viso::MotionOnlyBA(Sophus::SE3d &T21, std::vector<int> &tracked_points, std::vector<AlignmentPair> &alignment_pairs)
+{
+    assert(tracked_points.size() > 0);
+    assert(tracked_points.size() == alignment_pairs.size());
+
+    //    std::cout << "MBA start\n";
+    const int mba_max_iterations = 100;
+    const double nu = 5.0;
+    std::vector<MapPoint::Ptr> map_points = map_.GetPoints();
+
+    double last_cost = 0;
+    double initial_cost = 0;
+    int iter = 0;
+
+    double chi2_min = 99999999;
+    double chi2_max = 0;
+
+    //    const M6d Sigma_inv = 0 * M6d::Identity();
+    //    V6d last_tangent = last_frame->GetPose().log();
+
+    for (; iter < mba_max_iterations; ++iter)
+    {
+        M6d H = M6d::Zero();
+        V6d b = V6d::Zero();
+        double cost = 0;
+        double sigma2 = CalculateVariance2(nu, T21, tracked_points, alignment_pairs);
+
+        for (int i = 0; i < tracked_points.size(); ++i)
+        {
+            V3d global = map_points[tracked_points[i]]->GetWorldPos();
+            V3d local = T21 * global;
+            V2d uv = V2d{local[0] * K(0, 0) / local[2] + K(0, 2), local[1] * K(1, 1) / local[2] + K(1, 2)};
+            V2d error = (V2d)(alignment_pairs[i].uv_cur - uv);
+            double chi2 = error.transpose() * error;
+            chi2_min = std::min(chi2, chi2_min);
+            chi2_max = std::max(chi2, chi2_max);
+            double w = (nu + 1) / (nu + chi2 / sigma2);
+
+            M26d J = -dPixeldXi(K, T21.rotationMatrix(), T21.translation(), global, 1.0);
+            cost += w * chi2;
+
+            H += w * J.transpose() * J;
+            b += -w * error.transpose() * J;
+        }
+
+        //        H += Sigma_inv;
+        //        b += Sigma_inv * (last_tangent - T21.log());
+
+        if (iter == 0)
+        {
+            initial_cost = cost;
+        }
+        else if (cost > last_cost)
+        {
+            break;
+        }
+        else
+        {
+            V6d update = H.inverse() * b;
+            T21 = Sophus::SE3d::exp(update) * T21;
+        }
+
+        last_cost = cost;
+    }
+
+    assert(!T21.matrix().hasNaN());
+
+    //    std::cout << "MBA cost from " << initial_cost << " to " << last_cost << " in " << (iter + 1) << " iterations, chi2_min: " << chi2_min << ", chi2_max: " << chi2_max << "\n";
+}
