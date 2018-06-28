@@ -19,40 +19,12 @@
 
 #include "keyframe.h"
 #include "types.h"
+#include <slam_map.h>
+#include <common.h>
+#include <config.h>
+
 using namespace g2o;
-/*class VertexPoint : public g2o::BaseVertex<3, V3d> {
-    public:
-        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-        VertexPoint()
-        {
-        }
 
-        virtual bool read(std::istream& )
-        {
-            //cerr << __PRETTY_FUNCTION__ << " not implemented yet" << endl;
-            return false;
-        }
-
-        virtual bool write(std::ostream& ) const
-        {
-            //cerr << __PRETTY_FUNCTION__ << " not implemented yet" << endl;
-            return false;
-        }
-        virtual void setToOriginImpl() override
-        {
-            // reset to zero
-            //_estimate << 0, 0, 0;
-        }
-
-        virtual void oplusImpl(const double* update) override
-        {
-            // update
-            V3d::ConstMapType v(update);
-            _estimate += v;
-        }
-    };*/
-
-// g2o vertex that use sophus::SE3 as pose
 // g2o vertex that use sophus::SE3 as pose
 class VertexSophus : public g2o::BaseVertex<6, Sophus::SE3d> {
 public:
@@ -117,6 +89,14 @@ public:
         assert(!std::isnan(_error(1,0)));
     }
 
+    virtual bool isDepthPositive() {
+        const VertexSBAPointXYZ* p = static_cast<const VertexSBAPointXYZ*>(_vertices[0]);
+        const VertexSophus* c = static_cast<const VertexSophus*>(_vertices[1]);
+        assert(!p->estimate().hasNaN());
+        assert(!c->estimate().matrix().hasNaN());
+        return (c->estimate() * p->estimate())[2]>0.0;
+    }
+
     virtual bool read(std::istream& /*is*/)
     {
         //cerr << __PRETTY_FUNCTION__ << " not implemented yet" << endl;
@@ -131,6 +111,18 @@ public:
 
 private:
     M3d K_; // the source image
+};
+
+class Opt {
+private:
+    int BA_iteration;
+    double ba_outlier_thresh; // deviation of median disparity
+    int window;
+    int add_huber_kernal;
+public:
+    Opt();
+    void BA_LOCAL(viso::Map* map, M3d K);
+    void BA(viso::Map* map, bool map_only, int fix_cnt, M3d K);
 };
 
 #endif //VISO_BUNDLE_ADJUSTER_H

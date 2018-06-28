@@ -74,42 +74,15 @@ int main(int argc, char const* argv[])
     for ( int i=0; i<rgb_files.size(); i++ )
     {
         sequence.RunOnce();
-        //Eigen::Quaternion<double> q(viso.last_frame->GetR());
-        //V3d t(viso.last_frame->GetT());
-        //q.normalize();
-        //qx = q.x();
-        //qy = q.y();
-        //qz = q.z();
-        //qw = q.w();
-        //cout << viso.last_frame->times_<<" "<<t[0]<<" "<<t[1]<<" "<<t[2]<<" "<<qx<<" "<<qy<<" "<<qz<<" "<<qw<<endl;
-        //out.open(dataset_dir + "/estimation.txt", std::ofstream::out | std::ofstream::app);
-        //out << viso.last_frame->GetTime() << " " << t[0] << " " << t[1] << " " << t[2] << " " << qx << " " << qy << " " << qz << " " << qw << endl;
-        //out.close();
     }
 
     cout << "print out trajectory to estimation.txt" << endl;
-    /*for (int i=0; i<viso.GetMap()->Keyframes().size(); i++)
-    {
-        Eigen::Quaternion<double> q(viso.GetMap()->Keyframes()[i]->GetR());
-        V3d t(viso.GetMap()->Keyframes()[i]->GetT());
-        q.normalize();
-        qx = q.x();
-        qy = q.y();
-        qz = q.z();
-        qw = q.w();
-        out.open(dataset_dir + "/estimation.txt", std::ofstream::out | std::ofstream::app);
-        out << viso.GetMap()->Keyframes()[i]->GetTime() << " " << t[0] << " " << t[1] << " " << t[2] << " " << qx << " " << qy << " " << qz << " " << qw << endl;
-        out.close();
-    }*/
 
     for (int i=0; i<viso.frame_time.size(); i++)
     {
-        cout << i << endl;
         int ref = viso.ref_key[i]; //get reference keyframe id
-        cout << ref << endl;
         Sophus::SE3d key2frame = {viso.GetMap()->Keyframes()[ref]->GetR(),viso.GetMap()->Keyframes()[ref]->GetT()};
         Sophus::SE3d world2frame = key2frame*(viso.ref_pose[i]);
-        cout << world2frame.matrix() << endl;
         Eigen::Quaternion<double> q(world2frame.rotationMatrix());
         V3d t(world2frame.translation());
         q.normalize();

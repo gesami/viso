@@ -22,12 +22,10 @@ private:
         kFinished = 2
     };
 
-    int lk_half_patch_size = Config::get<int>("lk_half_patch_size");
-    double lk_photometric_thresh = (lk_half_patch_size * 2) * (lk_half_patch_size * 2) * Config::get<double>("lk_photometric_thresh") * Config::get<double>("lk_photometric_thresh");
-    ;
-    double lk_d2_factor = Config::get<double>("lk_d2_factor"); // deviation of median disparity
-    int BA_iteration = Config::get<int>("BA_iteration");
-    double ba_outlier_thresh = Config::get<double>("ba_outlier_thresh"); // deviation of median disparity
+    const int lk_half_patch_size = Config::get<int>("lk_half_patch_size");
+    const double lk_photometric_thresh = (lk_half_patch_size * 2) * (lk_half_patch_size * 2) * Config::get<double>("lk_photometric_thresh") * Config::get<double>("lk_photometric_thresh");
+    const double lk_d2_factor = Config::get<double>("lk_d2_factor"); // deviation of median disparity
+    
 
     const int max_feature = Config::get<int>("max_feature");
     const double qualityLevel = Config::get<double>("qualityLevel");
@@ -38,6 +36,7 @@ private:
     const int new_kf_nr_tracked_points = Config::get<int>("new_kf_nr_tracked_points");
     const int new_kf_nr_frames_inbtw = Config::get<int>("new_kf_nr_frames_inbtw");
     const int add_ba = Config::get<int>("do_bundle_adjustment");
+    const int add_lba = Config::get<int>("do_local_bundle_adjustment");
     const int vis = Config::get<int>("visualize_tracking");
     const int add_mba = Config::get<int>("do_motion_only_bundle_adjustment");
     const double chi2_thresh =  Config::get<int>("chi2_thresh");
@@ -51,6 +50,7 @@ private:
     M3d K;
 
     Initializer initializer;
+    Opt opt;
     viso::Map map_;
     State state_;
     Sophus::SE3d k2f; //keyframe-to-frame motion
@@ -62,7 +62,7 @@ private:
 
     std::thread ba_thread_;
     std::atomic<bool> do_ba_;
-    std::mutex update_map_;
+
 
 public:
     Viso(double fx, double fy, double cx, double cy)
@@ -73,6 +73,7 @@ public:
     }
 
     std::atomic<bool> running;
+    std::mutex update_map_;
 
     std::vector<Sophus::SE3d> poses;
     std::vector<Sophus::SE3d> poses_opt;
@@ -111,18 +112,16 @@ private:
 
     void LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before, std::vector<V2d>& kp_after, std::vector<int>& tracked_points, std::vector<AlignmentPair>& alignment_pairs);
     void LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool>& success, std::vector<V2d>& kp, int level);
-    void BA(bool map_only, int fix_cnt);
-    void BA_KEY();
     bool IsKeyframe(Keyframe::Ptr keyframe, int nr_tracked_points);
-
     double CalculateVariance2(const double& nu, const Sophus::SE3d& T21,
         const std::vector<int>& tracked_points,
         const std::vector<AlignmentPair>& alignment_pairs);
     double RemoveOutliers(const Sophus::SE3d& T21,
         std::vector<int>& tracked_points,
         std::vector<AlignmentPair>& alignment_pairs);
-
     void MotionOnlyBA(Sophus::SE3d& T21, std::vector<int>& tracked_points, std::vector<AlignmentPair>& alignment_pairs);
+    void global_ba();
+    void local_ba();
 };
 
 #endif

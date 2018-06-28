@@ -1,7 +1,7 @@
 %YAML:1.0
 # data
 # the tum dataset directory, change it to yours! 
-dataset_dir: .
+dataset_dir: ./data/rgbd_dataset_freiburg1_xyz
 # camera intrinsics
 # fr1
 camera.fx: 517.3
@@ -31,11 +31,15 @@ max_feature: 500
 qualityLevel: 0.01
 minDistance: 10
 grid_size:  20
-do_bundle_adjustment: 1
-visualize_tracking: 0
-do_motion_only_bundle_adjustment: 1
-chi2_thresh: 5.0
 
+#optimization
+do_bundle_adjustment: 0
+do_local_bundle_adjustment: 1
+visualize_tracking: 1
+do_motion_only_bundle_adjustment: 0
+chi2_thresh: 5.0
+add_huber_kernal: 1
+set_window: 5
 
 # initialization
 reset_after: 15
