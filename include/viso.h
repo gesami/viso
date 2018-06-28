@@ -32,6 +32,8 @@ private:
 
     const double new_kf_dist_thresh = Config::get<double>("new_kf_dist_thresh");
     const double new_kf_angle_thresh = Config::get<double>("new_kf_angle_thresh");
+    const double combined_thresh = Config::get<double>("combined_thresh");
+    const double angle_combined_ratio = Config::get<double>("new_kf_angle_thresh");
 
     //const int lk_half_patch_size = 5;
     //const double lk_photometric_thresh = (lk_half_patch_size * 2) * (lk_half_patch_size * 2) * 15 * 15;
@@ -91,6 +93,7 @@ private:
     void BA(bool map_only, int fix_cnt, Keyframe::Ptr current_frame, const std::vector<V2d>& kp, const std::vector<int>& tracked_points);
     void BA_KEY();
     bool IsKeyframe(Keyframe::Ptr keyframe);
+    double GetMotion(Keyframe::Ptr cur_frame);
 };
 
 #endif

@@ -24,7 +24,7 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
         cv::waitKey(10);
         if (initialized) {
             state_ = kRunning;
-            BA(true, 1, {}, {}, {});
+            // BA(true, 1, {}, {}, {});
         }
     } break;
 
@@ -40,25 +40,25 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
         std::vector<V2d> kp_before, kp_after;
         std::vector<int> tracked_points;
         LKAlignment(cur_frame, kp_before, kp_after, tracked_points);
+        
 
+        // show image
         cv::Mat display;
         cv::cvtColor(cur_frame->Mat(), display, CV_GRAY2BGR);
-
         for (int i = 0; i < kp_after.size(); ++i) {
             int r = (i % 3) == 0;
             int g = (i % 3) == 1;
             int b = (i % 3) == 2;
             cv::rectangle(display, cv::Point2f(kp_before[i].x() - 4, kp_before[i].y() - 4), cv::Point2f(kp_before[i].x() + 4, kp_before[i].y() + 4),
                 cv::Scalar(255 * b, 255 * g, 255 * r));
-
             cv::rectangle(display, cv::Point2f(kp_after[i].x() - 4, kp_after[i].y() - 4), cv::Point2f(kp_after[i].x() + 4, kp_after[i].y() + 4),
                 cv::Scalar(255 * b, 255 * g, 255 * r));
         }
-
         cv::imshow("Tracked", display);
-        cv::waitKey(10);
+        cv::waitKey(0);
 
         // for now there is only one active filter
+        /*
         if (filter != nullptr) {
             if (filter->IsDone()) {
                 delete filter;
@@ -67,36 +67,53 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
                 filter->Update(cur_frame);
                 filter->UpdateMap(&map_);
             }
-        }
+        } */
 
         if (IsKeyframe(cur_frame)) {
+            
             assert(cur_frame->Keypoints().size() == 0);
-
             std::vector<cv::KeyPoint> kp;
             map_.AddKeyframe(cur_frame);
             //BA_KEY();
             featureDetector->detect(cur_frame->Mat(), kp);
-            cur_frame->SetOccupied();
+            vector<V3d> wp = map_.GetPoints3d(); //world points
+            std::cout<< " Clearing the grids" << std::endl;
+            cur_frame->SetOccupied( wp );
             cur_frame->AddNewFeatures(kp);
 
             vector<MapPoint::Ptr> map_points = map_.GetPoints();
 
+            // TODO: 
             for (int i = 0; i < tracked_points.size(); ++i) {
                 cv::KeyPoint kp;
                 kp.pt.x = kp_after[i].x();
                 kp.pt.y = kp_after[i].y();
-                int kp_idx = cur_frame->AddKeypoint(kp);
-                map_points[tracked_points[i]]->AddObservation(cur_frame, kp_idx);
+                int kp_idx = cur_frame->AddKeypoint(kp);       // add the keypoints one by one 
+                map_points[tracked_points[i]]->AddObservation(cur_frame, kp_idx);   // saved in map: world point coordinate, corresponding frame, position of point kp array 
             }
 
-            // TODO: What else do we have to do here?
-            if (filter == nullptr) {
+            // TODO: initializing a new depth filter
+            if (filter != nullptr) {
+                delete filter;
                 filter = new depth_filter(cur_frame);
+            }else{
+                filter = new depth_filter(cur_frame);   
             }
             std::cout << "New keyframe added!\n";
 
-            BA(true, 2, {}, {}, {});
+            //BA(true, 2, {}, {}, {});
             //BA_KEY();
+        } else{  
+            // TODO stop updating the depth filter if the motion is too small
+            if (filter != nullptr) {   
+                if( GetMotion(cur_frame) < 0.05 ){
+                    
+                }else{
+                //std::cout << "motion value" <<  GetMotion(cur_frame) << std::endl;
+                    filter->Update(cur_frame);
+                    filter->UpdateMap( &map_, cur_frame );
+                }
+            }
         }
 
     } break;
@@ -804,6 +821,27 @@ bool Viso::IsKeyframe(Keyframe::Ptr cur_frame)
         std::cout << "IsKeyframe angle: " << angle << "\n";
         return true;
     }
+    
+    if (distance + angle_combined_ratio*angle > combined_thresh ){
+        std::cout << " combined_thresh selection " << std::endl;
+        return true;
+    }
 
     return false;
 }
+
+double Viso::GetMotion(Keyframe::Ptr cur_frame)
+{
+    V3d last_T = map_.GetLastPose().translation();
+    V3d cur_T = cur_frame->GetT();
+    V3d delta_T = (cur_T - last_T);
+    double distance = delta_T.norm();
+
+    M3d last_R = map_.GetLastPose().rotationMatrix();
+    M3d cur_R = cur_frame->GetR();
+    M3d delta_R = cur_R.transpose() * last_R;
+    double angle = std::abs(std::acos((delta_R(0, 0) + delta_R(1, 1) + delta_R(2, 2) - 1) * 0.5));
+
+    return ( distance + angle_combined_ratio*angle);
+}
+

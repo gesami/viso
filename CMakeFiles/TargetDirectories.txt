@@ -1,0 +1,3 @@
+/home/wpy/code/viso/CMakeFiles/edit_cache.dir
+/home/wpy/code/viso/CMakeFiles/rebuild_cache.dir
+/home/wpy/code/viso/CMakeFiles/viso.dir
