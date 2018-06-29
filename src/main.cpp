@@ -28,7 +28,7 @@ int main(int argc, char const* argv[])
 {
 
     //
-    //Process data set
+    //Process data set 
     //
     Config::setParameterFile(argv[1]);
     string dataset_dir = Config::get<string>("dataset_dir");

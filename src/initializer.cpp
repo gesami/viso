@@ -86,7 +86,7 @@ bool Initializer::InitializeMap(Keyframe::Ptr cur_frame, viso::Map* map, const c
         if (good_cnt < min_good_cnt_) {
             return false;
         }
-
+        
         NormalizeDepth(T, points3d_);
 
         map->AddKeyframe(ref_frame_);

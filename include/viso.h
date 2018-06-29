@@ -33,6 +33,9 @@ private:
 
     const double new_kf_dist_thresh = Config::get<double>("new_kf_dist_thresh");
     const double new_kf_angle_thresh = Config::get<double>("new_kf_angle_thresh");
+    const double combined_thresh = Config::get<double>("combined_thresh");
+    const double angle_combined_ratio = Config::get<double>("new_kf_angle_thresh");
+
     const int new_kf_nr_tracked_points = Config::get<int>("new_kf_nr_tracked_points");
     const int new_kf_nr_frames_inbtw = Config::get<int>("new_kf_nr_frames_inbtw");
     const int add_ba = Config::get<int>("do_bundle_adjustment");
@@ -40,6 +43,7 @@ private:
     const int vis = Config::get<int>("visualize_tracking");
     const int add_mba = Config::get<int>("do_motion_only_bundle_adjustment");
     const double chi2_thresh =  Config::get<int>("chi2_thresh");
+
 
     //const int lk_half_patch_size = 5;
     //const double lk_photometric_thresh = (lk_half_patch_size * 2) * (lk_half_patch_size * 2) * 15 * 15;
@@ -112,6 +116,7 @@ private:
 
     void LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before, std::vector<V2d>& kp_after, std::vector<int>& tracked_points, std::vector<AlignmentPair>& alignment_pairs);
     void LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool>& success, std::vector<V2d>& kp, int level);
+    double GetMotion(Keyframe::Ptr cur_frame);
     bool IsKeyframe(Keyframe::Ptr keyframe, int nr_tracked_points);
     double CalculateVariance2(const double& nu, const Sophus::SE3d& T21,
         const std::vector<int>& tracked_points,

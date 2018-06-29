@@ -142,6 +142,7 @@ public:
     inline void SetK(M3d K) { K_ = K; }
     inline const std::string& GetTime() { return time_; }
     inline double GetScale(int level) { return Keyframe::scales[level]; }
+    inline cv::Mat GetMat() { return mat_; }
 
     inline const std::vector<cv::Mat>& GetPyramids() { return pyramids_; }
 
@@ -162,6 +163,8 @@ public:
         return keypoints_df_.size();
     }
 
+    //void SetOccupied(vector<V3d>& wp);
+    //void SetOccupied();
     void SetOccupied(std::vector<V3d> mp);
     void AddNewFeatures(std::vector<cv::KeyPoint> newfts);
 };

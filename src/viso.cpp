@@ -104,30 +104,21 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
         ref_key.push_back(map_.GetKeyid());
         ref_pose.push_back(k2f);
 
+        // show image
         cv::Mat display;
         cv::cvtColor(cur_frame->Mat(), display, CV_GRAY2BGR);
-
         
         if(vis){
         for (int i = 0; i < kp_after.size(); ++i) {
             cv::rectangle(display, cv::Point2f(kp_after[i].x() - 4, kp_after[i].y() - 4), cv::Point2f(kp_after[i].x() + 4, kp_after[i].y() + 4),
                 cv::Scalar(0, 255, 0));
         }
-
         cv::imshow("Tracked", display);
         cv::waitKey(10);}
-
-
-        // for now there is only one active filter
-        //        if (filter != nullptr) {
-        //            filter->Update(cur_frame);
-        //            filter->UpdateMap(&map_);
-        //        }
 
         if (IsKeyframe(cur_frame, tracked_points.size()))
         {
             assert(cur_frame->Keypoints().size() == 0);
-
             std::vector<cv::KeyPoint> kp;
             map_.AddKeyframe(cur_frame);
             vector<MapPoint::Ptr> map_points = map_.GetPoints();
@@ -137,24 +128,50 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
                 cv::KeyPoint kp;
                 kp.pt.x = kp_after[i].x();
                 kp.pt.y = kp_after[i].y();
-                int kp_idx = cur_frame->AddKeypoint(kp);
-                map_points[tracked_points[i]]->AddObservation(cur_frame, kp_idx);
-            };
+                int kp_idx = cur_frame->AddKeypoint(kp);       // add the keypoints one by one 
+                map_points[tracked_points[i]]->AddObservation(cur_frame, kp_idx);   // saved in map: world point coordinate, corresponding frame, position of point kp array 
+            }
+
             featureDetector->detect(cur_frame->Mat(), kp);
-            cur_frame->SetOccupied(map_.GetPoints3d());
+            vector<V3d> wp = map_.GetPoints3d(); //world points
+            std::cout<< " Clearing the grids" << std::endl;
+            cur_frame->SetOccupied( wp );
             cur_frame->AddNewFeatures(kp);
 
-            // TODO: What else do we have to do here?
-            //            if (filter != nullptr) {
-            //                delete filter;
-            //            }
-            //
-            //            filter = new depth_filter(cur_frame);
-            std::cout << "New keyframe added!\n";;
+
+            // TODO: initializing a new depth filter
+            if (filter != nullptr) {
+                delete filter;
+                filter = new depth_filter(cur_frame);
+            }else{
+                filter = new depth_filter(cur_frame);   
+            }
+            std::cout << "New keyframe added!\n";
 
             do_ba_ = true;
             k2f = Sophus::SE3d(M3d::Identity(), V3d::Zero());
             lkf = cur_frame->GetPose();
+        }else{  
+
+            // TODO stop updating the depth filter if the motion is too small
+
+            if (filter != nullptr) {   
+
+                if( GetMotion(cur_frame) < 0.05 ){
+
+                    
+
+                }else{
+
+                //std::cout << "motion value" <<  GetMotion(cur_frame) << std::endl;
+
+                    filter->Update(cur_frame);
+
+                    filter->UpdateMap( &map_, cur_frame );
+
+                }
+
+            }
         }
     }
     break;
@@ -673,8 +690,73 @@ bool Viso::IsKeyframe(Keyframe::Ptr cur_frame, int nr_tracked_points)
         std::cout << "IsKeyframe angle: " << angle << "\n";
         return true;
     }
+    
+    if (distance + angle_combined_ratio*angle > combined_thresh ){
+        std::cout << " combined_thresh selection " << std::endl;
+        return true;
+    }
 
     return false;
+}
+
+
+double Viso::GetMotion(Keyframe::Ptr cur_frame)
+{
+    V3d last_T = map_.GetLastPose().translation();
+    V3d cur_T = cur_frame->GetT();
+    V3d delta_T = (cur_T - last_T);
+    double distance = delta_T.norm();
+
+    M3d last_R = map_.GetLastPose().rotationMatrix();
+    M3d cur_R = cur_frame->GetR();
+    M3d delta_R = cur_R.transpose() * last_R;
+    double angle = std::abs(std::acos((delta_R(0, 0) + delta_R(1, 1) + delta_R(2, 2) - 1) * 0.5));
+
+    return ( distance + angle_combined_ratio*angle);
+}
+
+
+double Viso::CalculateVariance2(const double &nu, const Sophus::SE3d &T21,
+                                const std::vector<int> &tracked_points,
+                                const std::vector<AlignmentPair> &alignment_pairs)
+{
+    const double n = tracked_points.size();
+    const int max_iterations = 100;
+    const double eps = 0.0001;
+
+    double sigma2 = 0.0;
+    double old_sigma2 = 1.0;
+
+    std::vector<MapPoint::Ptr> map_points = map_.GetPoints();
+
+    int iter = 0;
+    for (; iter < max_iterations; ++iter)
+    {
+        sigma2 = 0.0;
+
+        for (int i = 0; i < tracked_points.size(); ++i)
+        {
+            V3d global = map_points[tracked_points[i]]->GetWorldPos();
+            V3d local = T21 * global;
+            V2d uv = V2d{local[0] * K(0, 0) / local[2] + K(0, 2), local[1] * K(1, 1) / local[2] + K(1, 2)};
+            V2d error = (V2d)(alignment_pairs[i].uv_cur - uv);
+            double chi2 = error.transpose() * error;
+            sigma2 += chi2 * (nu + 1) / (nu + chi2 / old_sigma2);
+        }
+
+        sigma2 /= n;
+
+        if (iter > 0 && std::abs(sigma2 - old_sigma2) / old_sigma2 < eps)
+        {
+            break;
+        }
+
+        old_sigma2 = sigma2;
+    }
+
+    //    cout << "Sigma : " << sigma2 << ", iterations: " << (iter + 1) << "\n";
+
+    return sigma2;
 }
 
 
@@ -777,49 +859,6 @@ void Viso::MotionOnlyBA(Sophus::SE3d &T21, std::vector<int> &tracked_points, std
     //    std::cout << "MBA cost from " << initial_cost << " to " << last_cost << " in " << (iter + 1) << " iterations, chi2_min: " << chi2_min << ", chi2_max: " << chi2_max << "\n";
 }
 
-
-double Viso::CalculateVariance2(const double &nu, const Sophus::SE3d &T21,
-                                const std::vector<int> &tracked_points,
-                                const std::vector<AlignmentPair> &alignment_pairs)
-{
-    const double n = tracked_points.size();
-    const int max_iterations = 100;
-    const double eps = 0.0001;
-
-    double sigma2 = 0.0;
-    double old_sigma2 = 1.0;
-
-    std::vector<MapPoint::Ptr> map_points = map_.GetPoints();
-
-    int iter = 0;
-    for (; iter < max_iterations; ++iter)
-    {
-        sigma2 = 0.0;
-
-        for (int i = 0; i < tracked_points.size(); ++i)
-        {
-            V3d global = map_points[tracked_points[i]]->GetWorldPos();
-            V3d local = T21 * global;
-            V2d uv = V2d{local[0] * K(0, 0) / local[2] + K(0, 2), local[1] * K(1, 1) / local[2] + K(1, 2)};
-            V2d error = (V2d)(alignment_pairs[i].uv_cur - uv);
-            double chi2 = error.transpose() * error;
-            sigma2 += chi2 * (nu + 1) / (nu + chi2 / old_sigma2);
-        }
-
-        sigma2 /= n;
-
-        if (iter > 0 && std::abs(sigma2 - old_sigma2) / old_sigma2 < eps)
-        {
-            break;
-        }
-
-        old_sigma2 = sigma2;
-    }
-
-    //    cout << "Sigma : " << sigma2 << ", iterations: " << (iter + 1) << "\n";
-
-    return sigma2;
-}
 
 void Viso::global_ba(){
     std::lock_guard<std::mutex> lock(update_map_);
