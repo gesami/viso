@@ -3,11 +3,11 @@
 #ifndef VISO_KEYFRAME_H
 #define VISO_KEYFRAME_H
 
+#include "config.h"
 #include "types.h"
 #include <memory>
 #include <opencv2/opencv.hpp>
 #include <sophus/se3.hpp>
-#include "config.h"
 
 class Keyframe {
 private:
@@ -16,7 +16,7 @@ private:
 
     std::vector<cv::KeyPoint> keypoints_;
     std::vector<cv::KeyPoint> keypoints_df_;
-        
+
     std::string time_;
 
     cv::Mat mat_;
@@ -63,9 +63,9 @@ public:
         }
 
         //Set grid
-        grid_col_ = ceil(mat_.cols / (double) grid_size_);
-        grid_row_ = ceil(mat_.rows / (double) grid_size_);
-        grid_occupy_.resize(grid_col_*grid_row_, false);
+        grid_col_ = ceil(mat_.cols / (double)grid_size_);
+        grid_row_ = ceil(mat_.rows / (double)grid_size_);
+        grid_occupy_.resize(grid_col_ * grid_row_, false);
     }
 
     ~Keyframe() = default;
@@ -97,6 +97,25 @@ public:
         return IsInside(uv.x(), uv.y(), level);
     }
 
+    inline V3d PixelToImagePlane(const V2d& uv, int level)
+    {
+        double x = (uv.x() / scales[level] - K_(0, 2)) / K_(0, 0);
+        double y = (uv.y() / scales[level] - K_(1, 2)) / K_(1, 1);
+        return V3d{ x, y, 1.0 };
+    }
+
+    inline V3d WorldToCamera(const V3d& Pw)
+    {
+        V3d Pc = R_ * Pw + T_;
+        return Pc;
+    }
+
+    inline V3d CameraToWorld(const V3d& Pc)
+    {
+        V3d Pw = R_.transpose() * (Pc - T_);
+        return Pw;
+    }
+
     inline bool IsInside(const double& u, const double& v, int level = 0)
     {
         return u >= 0 && u < pyramids_[level].cols && v >= 0 && v < pyramids_[level].rows;
@@ -122,7 +141,6 @@ public:
 
     inline std::vector<cv::KeyPoint>& Keypoints() { return keypoints_; }
     inline std::vector<cv::KeyPoint>& GetKeypointsDF() { return keypoints_df_; }
-
 
     inline const cv::Mat& Mat() { return mat_; }
     inline Sophus::SE3d GetPose() { return Sophus::SE3d(R_, T_); }

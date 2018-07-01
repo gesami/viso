@@ -1,13 +1,15 @@
 %YAML:1.0
 # data
 # the tum dataset directory, change it to yours! 
+
 dataset_dir: .
+
 # camera intrinsics
 # fr1
 camera.fx: 517.3
 camera.fy: 516.5
-camera.cx: 325.1
-camera.cy: 249.7
+camera.cx: 318.6
+camera.cy: 255.3
 
 #camera.fx: 458.654
 #camera.fy: 457.296
@@ -20,9 +22,17 @@ camera.cy: 249.7
 #camera.cx: 325.1
 #camera.cy: 249.7
 
+#dataset_dir: /home/sage/Downloads/rgbd_dataset_freiburg3_structure_texture_near
+# fr3
+#camera.fx: 535.4
+#camera.fy: 539.2
+#camera.cx: 320.1
+#camera.cy: 247.6
+
+
 # VO Parameters
 number_of_features: 500
-lk_half_patch_size: 8
+lk_half_patch_size: 4
 lk_d2_factor: 0.9
 lk_photometric_thresh: 40
 BA_iteration: 100
@@ -32,9 +42,10 @@ qualityLevel: 0.01
 minDistance: 10
 grid_size:  20
 do_bundle_adjustment: 1
-visualize_tracking: 0
+visualize_tracking: 1
 do_motion_only_bundle_adjustment: 1
 chi2_thresh: 5.0
+affine_warping: 1
 
 
 # initialization
@@ -47,5 +58,5 @@ disparity_thresh: 25.0
 reprojection_thresh: 0.3
 
 # new keyframe
-new_kf_dist_thresh: 0.15
+new_kf_dist_thresh: 0.2
 new_kf_angle_thresh: 0.2
