@@ -1,6 +1,6 @@
 %YAML:1.0
 # data
-# the tum dataset directory, change it to yours! 
+# the tum dataset directory, change it to yours!
 
 dataset_dir: .
 
@@ -29,9 +29,8 @@ camera.cy: 255.3
 #camera.cx: 320.1
 #camera.cy: 247.6
 
-
 # VO Parameters
-number_of_features: 500
+number_of_features: 800
 lk_half_patch_size: 4
 lk_d2_factor: 0.9
 lk_photometric_thresh: 40
@@ -40,13 +39,17 @@ ba_outlier_thresh: 5
 max_feature: 500
 qualityLevel: 0.01
 minDistance: 10
-grid_size:  20
-do_bundle_adjustment: 1
-visualize_tracking: 1
-do_motion_only_bundle_adjustment: 1
-chi2_thresh: 5.0
+grid_size:  10
 affine_warping: 1
 
+#optimization
+do_bundle_adjustment: 1
+do_local_bundle_adjustment: 0
+visualize_tracking: 1
+do_motion_only_bundle_adjustment: 0
+chi2_thresh: 5.0
+add_huber_kernel: 1
+set_window: 5
 
 # initialization
 reset_after: 15
@@ -58,5 +61,11 @@ disparity_thresh: 25.0
 reprojection_thresh: 0.3
 
 # new keyframe
-new_kf_dist_thresh: 0.2
-new_kf_angle_thresh: 0.2
+new_kf_dist_thresh: 0.1
+new_kf_angle_thresh: 0.35
+combined_thresh: 0.25
+angle_combined_ratio: 0.4
+
+#depth filter
+df_on: 0
+df_window_size: 5

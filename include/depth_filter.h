@@ -5,6 +5,7 @@
 #include <iostream>
 #include <sophus/se3.hpp>
 #include <vector>
+#include <cmath>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -14,6 +15,7 @@
 #include "slam_map.h"
 #include "types.h"
 #include <common.h>
+#include <config.h>
 
 using namespace cv;
 using namespace Eigen;
@@ -28,10 +30,11 @@ class depth_filter {
 
     // intrinstic parameter for rgb dataset
 
-    const int ncc_window_size = 7; // NCC half window size
+    const int ncc_window_size = 10; // NCC half window size
     const int ncc_area = (2 * ncc_window_size + 1) * (2 * ncc_window_size + 1); // NCC window area
-    const double min_cov = 0.1; // convergence determination: minimum variance
-    const double max_cov = 10; // divergence determination: maximum variance
+    const double min_cov = 0.01; // convergence determination: minimum variance
+    const double max_cov = 20; // divergence determination: maximum variance
+    int df_window_size;
 
     const double reprojection_thresh_ = Config::get<double>("reprojection_thresh");
 
@@ -68,36 +71,70 @@ public:
         status_.resize(nr_keypoints);
 
         for (int i = 0; i < nr_keypoints; ++i) {
-            depths_[i] = 1.0;
-            depths_cov_[i] = 5.0;
+            depths_[i] = 3.0;
+            depths_cov_[i] = 10.0;
             status_[i] = 0;
         }
-
+        df_window_size = Config::get<int>("df_window_size");
         current_iteration_ = 0;
     }
 
     // This should be called, after the filter IsDone() == true
-    void UpdateMap(viso::Map* map)
+    void UpdateMap(viso::Map* map, Keyframe::Ptr cur_frame)
     {
+        Mat ref = ref_frame_->GetMat();    // reference image
+        Mat curr = cur_frame->GetMat();
+        double photo_error = 0;
         for (int i = 0; i < kp_.size(); ++i) {
             if (status_[i] == 1) {
+                // check if the point is photometric consistent
                 V3d P = ref_frame_->GetPose().inverse() * (depths_[i] * px2cam({ kp_[i].pt.x, kp_[i].pt.y }));
+                // photometric error check 
+                SE3d pose_curr_TWC = cur_frame->GetPose();
+                V3d pc = pose_curr_TWC * P;
+                V2d p = cam2px(pc);
+                for (int u=0; u<df_window_size; u++){
+                    for (int v=0; v<df_window_size; v++){
+                        if ( (kp_[i].pt.x + u)>0 && (kp_[i].pt.x + u)<640 && (kp_[i].pt.y + v)>0 && (kp_[i].pt.y + v)<480 && (p(0)+u)>0 && (p(0)+u)<640 && (p(1)+v)>0 && (p(1)+v)<480 )
+                            photo_error += abs( GetPixelValue(ref, kp_[i].pt.x + u, kp_[i].pt.y + v) - GetPixelValue(curr, p(0)+u, p(1)+v) );
+                    }
+                }
+                cout << " photometric error is " << photo_error << endl;
+                if ( photo_error > 1000){
+                    cout <<  "deleting evil outlier !!!" << endl;
+                    status_[i] = 0;
+                    //depths_[i] = 3.0;
+                    //depths_cov_[i] = 10.0;
+                    continue;
+                }
                 int kp_idx = ref_frame_->AddKeypoint(kp_[i]);
                 MapPoint::Ptr map_point = std::make_shared<MapPoint>(P);
                 map_point->AddObservation(ref_frame_, kp_idx);
                 map->AddPoint(map_point);
-
                 status_[i] = 2; // added to map
             }
         }
     }
+    
+    // TODO clear the outliers
+    void Clear_outliers();
+    
+
 
     void Update(Keyframe::Ptr cur_frame)
     {
+        /*
+        if (IsDone()) {
+            return;
+        } */
+
         cur_frame_ = cur_frame;
 
         SE3d pose_curr_TWC = cur_frame->GetPose();
         SE3d pose_T_C_R = pose_curr_TWC * ref_frame_->GetPose().inverse(); // change world coordinate： T_C_W * T_W_R = T_C_R
+        // SE3d pose_T_C_R = pose_curr_TWC.inverse() * ref_frame_->GetPose();
+        // SE3d pose_T_C_R =  ref_frame_->GetPose().inverse() * pose_curr_TWC      ;
+        // pose_T_C_R = pose_curr_TWC.inverse();
         // plot the search process for each point
         for (int i = 0; i < kp_.size(); ++i) {
             if (status_[i] != 0) {
@@ -173,7 +210,8 @@ private:
 
         if (ret == false) { // matching fails
             //cout << " matching fails " << endl;
-            return -1;
+            // return -1;
+            return 0;
         }
         // continue;
 
@@ -257,7 +295,7 @@ private:
                 best_px_curr = px_curr;
             }
         }
-        if (best_ncc < 0.95f) // only choose large ncc values
+        if (best_ncc < 0.9f) // only choose large ncc values
             return false;
         pt_curr = best_px_curr;
         return true;
