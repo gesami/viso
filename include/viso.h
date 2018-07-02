@@ -25,7 +25,6 @@ private:
     const int lk_half_patch_size = Config::get<int>("lk_half_patch_size");
     const double lk_photometric_thresh = (lk_half_patch_size * 2) * (lk_half_patch_size * 2) * Config::get<double>("lk_photometric_thresh") * Config::get<double>("lk_photometric_thresh");
     const double lk_d2_factor = Config::get<double>("lk_d2_factor"); // deviation of median disparity
-    
 
     const int max_feature = Config::get<int>("max_feature");
     const double qualityLevel = Config::get<double>("qualityLevel");
@@ -42,14 +41,9 @@ private:
     const int add_lba = Config::get<int>("do_local_bundle_adjustment");
     const int vis = Config::get<int>("visualize_tracking");
     const int add_mba = Config::get<int>("do_motion_only_bundle_adjustment");
-    const double chi2_thresh =  Config::get<int>("chi2_thresh");
-
-
-    //const int lk_half_patch_size = 5;
-    //const double lk_photometric_thresh = (lk_half_patch_size * 2) * (lk_half_patch_size * 2) * 15 * 15;
-    //const double lk_d2_factor = 1.5 * 1.5; // deviation of median disparity
-    //const int BA_iteration = 1000;
-    //const double ba_outlier_thresh = 1;
+    const double chi2_thresh = Config::get<double>("chi2_thresh");
+    const int affine_warping = Config::get<int>("affine_warping");
+    const int df_on = Config::get<int>("df_on");
 
     M3d K;
 
@@ -66,7 +60,6 @@ private:
 
     std::thread ba_thread_;
     std::atomic<bool> do_ba_;
-
 
 public:
     Viso(double fx, double fy, double cx, double cy)
@@ -112,10 +105,13 @@ private:
         Keyframe::Ptr cur_frame;
         V2d uv_ref;
         V2d uv_cur;
+        V3d point3d;
     };
 
     void LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before, std::vector<V2d>& kp_after, std::vector<int>& tracked_points, std::vector<AlignmentPair>& alignment_pairs);
     void LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool>& success, std::vector<V2d>& kp, int level);
+    M2d GetAffineWarpingMatrix(Keyframe::Ptr ref_frame, Keyframe::Ptr cur_frame, V3d Pw, V2d uv_ref);
+
     double GetMotion(Keyframe::Ptr cur_frame);
     bool IsKeyframe(Keyframe::Ptr keyframe, int nr_tracked_points);
     double CalculateVariance2(const double& nu, const Sophus::SE3d& T21,

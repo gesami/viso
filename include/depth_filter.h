@@ -6,6 +6,8 @@
 #include <sophus/se3.hpp>
 #include <vector>
 #include <cmath>
+#include <boost/bind.hpp>
+#include <boost/math/distributions/normal.hpp>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -25,19 +27,28 @@ using namespace std;
 class depth_filter {
     // parameters
     const int boarder = 20; // boarder length
-    const int width = 640; // width
-    const int height = 480; // height
-
-    // intrinstic parameter for rgb dataset
-
+    // const int width = 640; // width
+    //const int height = 480; // height
     const int ncc_window_size = 10; // NCC half window size
     const int ncc_area = (2 * ncc_window_size + 1) * (2 * ncc_window_size + 1); // NCC window area
-    const double min_cov = 0.01; // convergence determination: minimum variance
-    const double max_cov = 20; // divergence determination: maximum variance
-    int df_window_size;
-
+    // const double min_cov = 0.1; // convergence determination: minimum variance
+    const double max_cov = 10; // divergence determination: maximum variance
+    double z_range = 5;
+    double init_depth = 1; 
+    double init_cov2 = 5;
+    double min_cov = z_range/200.0;
+    
+    double photometric_thresh = Config::get<double>("photometric_thresh"); 
+    double width = Config::get<double>("image_width");
+    double height = Config::get<double>("image_height");
+    double init_a = Config::get<double>("init_a");
+    double init_b = Config::get<double>("init_b");
+    int df_window_size = Config::get<int>("df_window_size");
+    double photo_area = (double) (2 * df_window_size + 1) * (2 * df_window_size + 1); 
     const double reprojection_thresh_ = Config::get<double>("reprojection_thresh");
-
+    
+    
+    // intrinstic parameter for rgb dataset
     double fx;
     double fy;
     double cx;
@@ -46,8 +57,10 @@ class depth_filter {
 private:
     Keyframe::Ptr ref_frame_;
     std::vector<cv::KeyPoint> kp_;
-    std::vector<double> depths_;
-    std::vector<double> depths_cov_;
+    std::vector<double> depths_;      // inverse gaussian coordinate
+    std::vector<double> depths_cov_;  
+    std::vector<double> beta_a;       // beta distribution
+	std::vector<double> beta_b;
     std::vector<int> status_;
     int current_iteration_;
 
@@ -59,7 +72,6 @@ public:
         , kp_(ref_frame_->GetKeypointsDF())
     {
         M3d K = ref_frame_->GetK();
-
         fx = K(0, 0); // focal length x
         fy = K(1, 1); // focal length y
         cx = K(0, 2); // optical center x
@@ -68,14 +80,17 @@ public:
         int nr_keypoints = kp_.size();
         depths_.resize(nr_keypoints);
         depths_cov_.resize(nr_keypoints);
+        beta_a.resize(nr_keypoints);
+        beta_b.resize(nr_keypoints);
         status_.resize(nr_keypoints);
 
         for (int i = 0; i < nr_keypoints; ++i) {
-            depths_[i] = 3.0;
-            depths_cov_[i] = 10.0;
+            depths_[i] = 1.0/init_depth;
+            depths_cov_[i] = init_cov2;
+            beta_a[i] = init_a;
+            beta_b[i] = init_b;
             status_[i] = 0;
         }
-        df_window_size = Config::get<int>("df_window_size");
         current_iteration_ = 0;
     }
 
@@ -83,30 +98,39 @@ public:
     void UpdateMap(viso::Map* map, Keyframe::Ptr cur_frame)
     {
         Mat ref = ref_frame_->GetMat();    // reference image
-        Mat curr = cur_frame->GetMat();
-        double photo_error = 0;
+        std::vector<Keyframe::Ptr> lkf = map->LastKeyframes();
+        // Mat curr = cur_frame->GetMat();
+        // double photo_error = 0;
         for (int i = 0; i < kp_.size(); ++i) {
             if (status_[i] == 1) {
-                // check if the point is photometric consistent
                 V3d P = ref_frame_->GetPose().inverse() * (depths_[i] * px2cam({ kp_[i].pt.x, kp_[i].pt.y }));
-                // photometric error check 
-                SE3d pose_curr_TWC = cur_frame->GetPose();
-                V3d pc = pose_curr_TWC * P;
-                V2d p = cam2px(pc);
-                for (int u=0; u<df_window_size; u++){
-                    for (int v=0; v<df_window_size; v++){
-                        if ( (kp_[i].pt.x + u)>0 && (kp_[i].pt.x + u)<640 && (kp_[i].pt.y + v)>0 && (kp_[i].pt.y + v)<480 && (p(0)+u)>0 && (p(0)+u)<640 && (p(1)+v)>0 && (p(1)+v)<480 )
-                            photo_error += abs( GetPixelValue(ref, kp_[i].pt.x + u, kp_[i].pt.y + v) - GetPixelValue(curr, p(0)+u, p(1)+v) );
+                int bad_observation=0; 
+                // use only last two keyframes
+                for(int j=lkf.size()-3; j<lkf.size()-1;j++){
+                //for(int j=0; j<lkf.size();j++){
+                    double photo_error = 0;
+                    Mat curr = lkf[j]->GetMat();
+                    SE3d pose_curr_TWC = lkf[j]->GetPose();
+                    V3d pc = pose_curr_TWC * P;
+                    V2d p = cam2px(pc);
+                    if (p(0)<boarder || p(0)>(width-boarder) || p(1)<boarder || p(1)>(height-boarder) )
+                        continue;
+                    for (int u=-df_window_size; u<df_window_size; u++){
+                        for (int v=-df_window_size; v<df_window_size; v++){
+                                photo_error += abs( GetPixelValue(ref, kp_[i].pt.x + u, kp_[i].pt.y + v) - GetPixelValue(curr, p(0)+u, p(1)+v) );
+                        }
                     }
+                    if ( photo_error > photometric_thresh*photo_area)
+                        bad_observation++;
                 }
-                //cout << " photometric error is " << photo_error << endl;
-                if ( photo_error > 1000){
-                    //cout <<  "deleting evil outlier !!!" << endl;
+
+                //cout << " bad observation number " << bad_observation << endl;
+                if( bad_observation > 0){
                     status_[i] = 0;
-                    //depths_[i] = 3.0;
-                    //depths_cov_[i] = 10.0;
                     continue;
                 }
+
+                assert(depths_[i]<10 && depths_[i]>0);
                 if(!P.hasNaN()){
                     int kp_idx = ref_frame_->AddKeypoint(kp_[i]);
                     MapPoint::Ptr map_point = std::make_shared<MapPoint>(P);
@@ -114,6 +138,8 @@ public:
                     map->AddPoint(map_point);
                     status_[i] = 2; // added to map
                 }
+
+
             }
         }
     }
@@ -121,8 +147,6 @@ public:
     // TODO clear the outliers
     void Clear_outliers();
     
-
-
     void Update(Keyframe::Ptr cur_frame)
     {
         /*
@@ -134,9 +158,6 @@ public:
 
         SE3d pose_curr_TWC = cur_frame->GetPose();
         SE3d pose_T_C_R = pose_curr_TWC * ref_frame_->GetPose().inverse(); // change world coordinate： T_C_W * T_W_R = T_C_R
-        // SE3d pose_T_C_R = pose_curr_TWC.inverse() * ref_frame_->GetPose();
-        // SE3d pose_T_C_R =  ref_frame_->GetPose().inverse() * pose_curr_TWC      ;
-        // pose_T_C_R = pose_curr_TWC.inverse();
         // plot the search process for each point
         for (int i = 0; i < kp_.size(); ++i) {
             if (status_[i] != 0) {
@@ -145,7 +166,7 @@ public:
             int x = kp_[i].pt.x;
             int y = kp_[i].pt.y;
             // set last parameter to one to show polar line search process
-            status_[i] = update(ref_frame_->Mat(), cur_frame->Mat(), pose_T_C_R, depths_[i], depths_cov_[i], x, y, false);
+            status_[i] = update(ref_frame_->Mat(), cur_frame->Mat(), pose_T_C_R, depths_[i], depths_cov_[i], beta_a[i], beta_b[i], x, y, false);
         }
     }
 
@@ -183,21 +204,9 @@ private:
             && pt(0, 0) + boarder < width && pt(1, 0) + boarder <= height;
     }
 
-    // write depth information
     // update depth mat
-    int update(const Mat& ref, const Mat& curr, const SE3d& T_C_R, double& depth, double& depth_cov, int x, int y, bool show)
+    int update(const Mat& ref, const Mat& curr, const SE3d& T_C_R, double& depth, double& depth_cov, double& beta_a, double& beta_b, int x, int y, bool show)
     {
-        // uncommend to iterate for whole mat
-        /* #pragma omp parallel for
-    for ( int x=boarder; x<width-boarder; x++ )
-#pragma omp parallel for
-        for ( int y=boarder; y<height-boarder; y++ )
-        { */
-
-        // int x = 250; int y = 250;
-        // judge the covariance of the point
-
-        // continue;
         // search the match in polar line
         Vector2d pt_curr;
         bool ret = epipolarSearch(
@@ -222,10 +231,9 @@ private:
             showEpipolarMatch(ref, curr, Vector2d(x, y), pt_curr);
 
         // match successful, update the depth filter
-        updateDepthFilter(Vector2d(x, y), pt_curr, T_C_R, depth, depth_cov);
+        updateDepthFilter(Vector2d(x, y), pt_curr, T_C_R, depth, depth_cov, beta_a, beta_b);
 //        cout << " after updating depth is " << depth << endl;
 //        cout << " after updating convariance is " << depth_cov << endl;
-        // }
 
         if (depth_cov < min_cov) {
             V3d P = ref_frame_->GetPose().inverse() * (depth * px2cam({x, y }));
@@ -239,17 +247,13 @@ private:
               //cout << " depth outlier " << endl;
               return -1;
             }
-
-            //cout << " depth converged " << endl;
-
             return 1;
         };
-
+        
         if (depth_cov > max_cov) {
             //cout << " depth  divergered " << endl;
             return -1;
         }
-
         return 0;
     }
 
@@ -265,9 +269,10 @@ private:
         Vector3d P_ref = f_ref * depth_mu; // the p vecotr in reference frame
 
         Vector2d px_mean_curr = cam2px(T_C_R * P_ref); // the projected pixel according the depth average
-        double d_min = depth_mu - 4 * depth_cov, d_max = depth_mu + 4 * depth_cov;
-        if (d_min < 0.1)
-            d_min = 0.1;
+        // double d_min = depth_mu - 4 * depth_cov, d_max = depth_mu + 4 * depth_cov;
+        // if (d_min < 0.1) d_min = 0.1;
+        double d_min = 1.0/( depth_mu + depth_cov );
+        double d_max = 1.0/std::max( depth_mu - depth_cov, (double)0.0000001f);
         Vector2d px_min_curr = cam2px(T_C_R * (f_ref * d_min)); // the projected pixel according the smallest depth value
         Vector2d px_max_curr = cam2px(T_C_R * (f_ref * d_max)); // the projected pixel according the smallest depth value
 
@@ -297,7 +302,7 @@ private:
                 best_px_curr = px_curr;
             }
         }
-        if (best_ncc < 0.9f) // only choose large ncc values
+        if (best_ncc < 0.95f) // only choose large ncc values
             return false;
         pt_curr = best_px_curr;
         return true;
@@ -341,7 +346,9 @@ private:
         const Vector2d& pt_curr,
         const SE3d& T_C_R,
         double& depth,
-        double& depth_cov)
+        double& depth_cov,
+        double& beta_a, 
+        double& beta_b)
     {
         // depth calculation using triangulation
         SE3d T_R_C = T_C_R.inverse();
@@ -357,15 +364,15 @@ private:
         Vector3d t = T_R_C.translation();
         Vector3d f2 = T_R_C.rotationMatrix() * f_curr;
         //Vector3d f2 = T_R_C.rotation() * f_curr;
-        Vector2d b = Vector2d(t.dot(f_ref), t.dot(f2));
+        Vector2d db = Vector2d(t.dot(f_ref), t.dot(f2));
         double A[4];
         A[0] = f_ref.dot(f_ref);
         A[2] = f_ref.dot(f2);
         A[1] = -A[2];
         A[3] = -f2.dot(f2);
         double d = A[0] * A[3] - A[1] * A[2];
-        Vector2d lambdavec = Vector2d(A[3] * b(0, 0) - A[1] * b(1, 0),
-                                 -A[2] * b(0, 0) + A[0] * b(1, 0))
+        Vector2d lambdavec = Vector2d(A[3] * db(0, 0) - A[1] * db(1, 0),
+                                 -A[2] * db(0, 0) + A[0] * db(1, 0))
             / d;
         Vector3d xm = lambdavec(0, 0) * f_ref;
         Vector3d xn = t + lambdavec(1, 0) * f2;
@@ -374,26 +381,47 @@ private:
 
         // uncertainty calculation (one pixel as error)
         Vector3d p = f_ref * depth_estimation;
-        Vector3d a = p - t;
+        Vector3d da = p - t;
         double t_norm = t.norm();
-        double a_norm = a.norm();
+        double a_norm = da.norm();
         double alpha = acos(f_ref.dot(t) / t_norm);
-        double beta = acos(-a.dot(t) / (a_norm * t_norm));
+        double beta = acos(-da.dot(t) / (a_norm * t_norm));
         double beta_prime = beta + atan(1 / fx);
         double gamma = M_PI - alpha - beta_prime;
         double p_prime = t_norm * sin(beta_prime) / sin(gamma);
         double d_cov = p_prime - depth_estimation;
-        double d_cov2 = d_cov * d_cov;
-
+        // double d_cov2 = d_cov * d_cov;
         // gaussian fusion
+        // double mu = depth;
+        // double sigma2 = depth_cov;
+        // parameters for fusion
         double mu = depth;
         double sigma2 = depth_cov;
-
-        double mu_fuse = (d_cov2 * mu + sigma2 * depth_estimation) / (sigma2 + d_cov2);
-        double sigma_fuse2 = (sigma2 * d_cov2) / (sigma2 + d_cov2);
-
+        double tau2 = d_cov*d_cov; 
+        double a = beta_a;
+	    double b = beta_b;
+        // fusion
+        double norm_scale = sqrt(sigma2 + tau2);
+        if(std::isnan(norm_scale))
+     	  return false;
+        boost::math::normal_distribution<float> nd(mu, norm_scale);
+    	double s2 = 1./(1./sigma2 + 1./tau2);
+    	double m = s2*(mu/sigma2 + depth_estimation/tau2);
+    	double C1 = a/(a + b) * boost::math::pdf(nd, depth_estimation);
+    	double C2 = b/(a + b) * 1./z_range;
+    	double normalization_constant = C1 + C2;
+    	C1 /= normalization_constant;
+    	C2 /= normalization_constant;
+    	double f = C1*(a+1.)/(a+b+1.) + C2*a/(a+b+1.);
+    	float e = C1*(a+1.)*(a+2.)/((a+b+1.)*(a+b+2.))
+        	  + C2*a*(a+1.0f)/((a+b+1.0f)*(a+b+2.0f));
+    	// update parameters
+    	double mu_fuse = C1*m+C2*mu;
+    	double sigma_fuse2 = C1*(s2 + m*m) + C2*(sigma2 + mu*mu) - mu_fuse*mu_fuse;
         depth = mu_fuse;
         depth_cov = sigma_fuse2;
+    	beta_a = (e-f)/(f-e/f);
+    	beta_b =  a*(1.0f-f)/f;
 
         return true;
     }
@@ -429,3 +457,4 @@ private:
         waitKey(0);
     }
 };
+

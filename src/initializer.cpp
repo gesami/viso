@@ -113,6 +113,7 @@ bool Initializer::InitializeMap(Keyframe::Ptr cur_frame, viso::Map* map, const c
                 ref_frame_->AddKeypoint(ref_kp_[i]);
                 cur_frame->AddKeypoint(cur_kp_[i]);
                 MapPoint::Ptr map_point = std::make_shared<MapPoint>(points3d_[cnt]);
+                map_point->SetDirection(V3d{0, 0, 1});
                 map_point->AddObservation(ref_frame_, cnt);
                 map_point->AddObservation(cur_frame, cnt);
                 map->AddPoint(map_point);

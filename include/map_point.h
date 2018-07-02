@@ -32,12 +32,18 @@ public:
     {
         observations_.erase(observations_.begin() + idx);
     }
-
+    
+    // Position in world coordinates.
     inline V3d GetWorldPos() { return Pw_; }
     inline void SetWorldPos(V3d pos) { Pw_ = pos; }
+
+    // Direction in world coordinates.
+    inline void SetDirection(V3d dir) { dir_ = dir; }
+    inline V3d GetDirection() { return dir_; }
 private:
     V3d Pw_;
     std::vector<std::pair<Keyframe::Ptr, int> > observations_;
+    V3d dir_;
 };
 
 #endif //VISO_MAP_POINT_H
