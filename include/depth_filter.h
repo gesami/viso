@@ -27,8 +27,8 @@ using namespace std;
 class depth_filter {
     // parameters
     const int boarder = 20; // boarder length
-    const int width = 640; // width
-    const int height = 480; // height
+    // const int width = 640; // width
+    //const int height = 480; // height
     const int ncc_window_size = 10; // NCC half window size
     const int ncc_area = (2 * ncc_window_size + 1) * (2 * ncc_window_size + 1); // NCC window area
     // const double min_cov = 0.1; // convergence determination: minimum variance
@@ -36,13 +36,18 @@ class depth_filter {
     double z_range = 5;
     double init_depth = 1; 
     double init_cov2 = 5;
-    double init_a = 10.0;
-    double init_b = 10.0;
     double min_cov = z_range/200.0;
     
-    int df_window_size;
+    double photometric_thresh = Config::get<double>("photometric_thresh"); 
+    double width = Config::get<double>("image_width");
+    double height = Config::get<double>("image_height");
+    double init_a = Config::get<double>("init_a");
+    double init_b = Config::get<double>("init_b");
+    int df_window_size = Config::get<int>("df_window_size");
+    double photo_area = (double) (2 * df_window_size + 1) * (2 * df_window_size + 1); 
     const double reprojection_thresh_ = Config::get<double>("reprojection_thresh");
-
+    
+    
     // intrinstic parameter for rgb dataset
     double fx;
     double fy;
@@ -86,7 +91,6 @@ public:
             beta_b[i] = init_b;
             status_[i] = 0;
         }
-        df_window_size = Config::get<int>("df_window_size");
         current_iteration_ = 0;
     }
 
@@ -94,28 +98,35 @@ public:
     void UpdateMap(viso::Map* map, Keyframe::Ptr cur_frame)
     {
         Mat ref = ref_frame_->GetMat();    // reference image
-        Mat curr = cur_frame->GetMat();
-        double photo_error = 0;
+        std::vector<Keyframe::Ptr> lkf = map->LastKeyframes();
+        // Mat curr = cur_frame->GetMat();
+        // double photo_error = 0;
         for (int i = 0; i < kp_.size(); ++i) {
             if (status_[i] == 1) {
-                // check if the point is photometric consistent
                 V3d P = ref_frame_->GetPose().inverse() * (depths_[i] * px2cam({ kp_[i].pt.x, kp_[i].pt.y }));
-                // photometric error check 
-                SE3d pose_curr_TWC = cur_frame->GetPose();
-                V3d pc = pose_curr_TWC * P;
-                V2d p = cam2px(pc);
-                for (int u=0; u<df_window_size; u++){
-                    for (int v=0; v<df_window_size; v++){
-                        if ( (kp_[i].pt.x + u)>0 && (kp_[i].pt.x + u)<640 && (kp_[i].pt.y + v)>0 && (kp_[i].pt.y + v)<480 && (p(0)+u)>0 && (p(0)+u)<640 && (p(1)+v)>0 && (p(1)+v)<480 )
-                            photo_error += abs( GetPixelValue(ref, kp_[i].pt.x + u, kp_[i].pt.y + v) - GetPixelValue(curr, p(0)+u, p(1)+v) );
+                int bad_observation=0; 
+                // use only last two keyframes
+                for(int j=lkf.size()-2; j<lkf.size();j++){
+                //for(int j=0; j<lkf.size();j++){
+                    double photo_error = 0;
+                    Mat curr = lkf[j]->GetMat();
+                    SE3d pose_curr_TWC = lkf[j]->GetPose();
+                    V3d pc = pose_curr_TWC * P;
+                    V2d p = cam2px(pc);
+                    if (p(0)<boarder || p(0)>(width-boarder) || p(1)<boarder || p(1)>(height-boarder) )
+                        continue;
+                    for (int u=-df_window_size; u<df_window_size; u++){
+                        for (int v=-df_window_size; v<df_window_size; v++){
+                                photo_error += abs( GetPixelValue(ref, kp_[i].pt.x + u, kp_[i].pt.y + v) - GetPixelValue(curr, p(0)+u, p(1)+v) );
+                        }
                     }
+                    if ( photo_error > photometric_thresh*photo_area)
+                        bad_observation++;
                 }
-                cout << " photometric error is " << photo_error << endl;
-                if ( photo_error > 1000){
-                    cout <<  "deleting evil outlier !!!" << endl;
+                cout << " bad observation number " << bad_observation << endl;
+                if( bad_observation > 0){
+                    cout <<  "deleting outlier !!!" << endl;
                     status_[i] = 0;
-                    //depths_[i] = 3.0;
-                    //depths_cov_[i] = 10.0;
                     continue;
                 }
                 assert(depths_[i]<10 && depths_[i]>0);

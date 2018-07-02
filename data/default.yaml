@@ -69,3 +69,8 @@ angle_combined_ratio: 0.4
 #depth filter
 df_on: 0
 df_window_size: 5
+init_a: 10
+init_b: 10
+image_width: 640
+image_height: 480
+
