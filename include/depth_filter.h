@@ -106,7 +106,7 @@ public:
                 V3d P = ref_frame_->GetPose().inverse() * (depths_[i] * px2cam({ kp_[i].pt.x, kp_[i].pt.y }));
                 int bad_observation=0; 
                 // use only last two keyframes
-                for(int j=lkf.size()-2; j<lkf.size();j++){
+                for(int j=lkf.size()-3; j<lkf.size()-1;j++){
                 //for(int j=0; j<lkf.size();j++){
                     double photo_error = 0;
                     Mat curr = lkf[j]->GetMat();
