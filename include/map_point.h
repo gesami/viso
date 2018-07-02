@@ -28,6 +28,11 @@ public:
         return observations_;
     }
 
+    inline void EraseObservation(int idx)
+    {
+        observations_.erase(observations_.begin() + idx);
+    }
+
     inline V3d GetWorldPos() { return Pw_; }
     inline void SetWorldPos(V3d pos) { Pw_ = pos; }
 private:

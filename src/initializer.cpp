@@ -109,6 +109,7 @@ bool Initializer::InitializeMap(Keyframe::Ptr cur_frame, viso::Map* map, const c
         int cnt = 0;
         for (int i = 0; i < p1.size(); ++i) {
             if (track_success_[i]) {
+                if(points3d_[cnt].hasNaN()) continue;
                 ref_frame_->AddKeypoint(ref_kp_[i]);
                 cur_frame->AddKeypoint(cur_kp_[i]);
                 MapPoint::Ptr map_point = std::make_shared<MapPoint>(points3d_[cnt]);

@@ -146,7 +146,7 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
             }else{
                 filter = new depth_filter(cur_frame);   
             }
-            std::cout << "New keyframe added!\n";
+            //std::cout << "New keyframe added!\n";
 
             do_ba_ = true;
             k2f = Sophus::SE3d(M3d::Identity(), V3d::Zero());
@@ -163,7 +163,7 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
 
                 }else{
 
-                //std::cout << "motion value" <<  GetMotion(cur_frame) << std::endl;
+                    //std::cout << "motion value" <<  GetMotion(cur_frame) << std::endl;
 
                     filter->Update(cur_frame);
 

@@ -99,19 +99,21 @@ public:
                             photo_error += abs( GetPixelValue(ref, kp_[i].pt.x + u, kp_[i].pt.y + v) - GetPixelValue(curr, p(0)+u, p(1)+v) );
                     }
                 }
-                cout << " photometric error is " << photo_error << endl;
+                //cout << " photometric error is " << photo_error << endl;
                 if ( photo_error > 1000){
-                    cout <<  "deleting evil outlier !!!" << endl;
+                    //cout <<  "deleting evil outlier !!!" << endl;
                     status_[i] = 0;
                     //depths_[i] = 3.0;
                     //depths_cov_[i] = 10.0;
                     continue;
                 }
-                int kp_idx = ref_frame_->AddKeypoint(kp_[i]);
-                MapPoint::Ptr map_point = std::make_shared<MapPoint>(P);
-                map_point->AddObservation(ref_frame_, kp_idx);
-                map->AddPoint(map_point);
-                status_[i] = 2; // added to map
+                if(!P.hasNaN()){
+                    int kp_idx = ref_frame_->AddKeypoint(kp_[i]);
+                    MapPoint::Ptr map_point = std::make_shared<MapPoint>(P);
+                    map_point->AddObservation(ref_frame_, kp_idx);
+                    map->AddPoint(map_point);
+                    status_[i] = 2; // added to map
+                }
             }
         }
     }
@@ -234,17 +236,17 @@ private:
             double proj_error = std::sqrt(dx * dx + dy * dy);
 
             if(proj_error > 3 * reprojection_thresh_) {
-              cout << " depth outlier " << endl;
+              //cout << " depth outlier " << endl;
               return -1;
             }
 
-            cout << " depth converged " << endl;
+            //cout << " depth converged " << endl;
 
             return 1;
         };
 
         if (depth_cov > max_cov) {
-            cout << " depth  divergered " << endl;
+            //cout << " depth  divergered " << endl;
             return -1;
         }
 

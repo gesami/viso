@@ -3,18 +3,13 @@
 # the tum dataset directory, change it to yours! 
 
 dataset_dir: ./data/rgbd_dataset_freiburg1_xyz
-
+#dataset_dir: ./data/rgbd_dataset_freiburg3_structure_texture_far
 # camera intrinsics
 # fr1
 camera.fx: 517.3
 camera.fy: 516.5
 camera.cx: 325.1
 camera.cy: 249.7
-
-#camera.fx: 458.654
-#camera.fy: 457.296
-#camera.cx: 367.215
-#camera.cy: 248.375
 
 # fr2
 #camera.fx: 520.9
@@ -29,6 +24,7 @@ camera.cy: 249.7
 #camera.cy: 247.6
 
 # VO Parameters
+visualize_tracking: 1 #1/0
 number_of_features: 800
 lk_half_patch_size: 8
 lk_d2_factor: 0.9
@@ -42,13 +38,16 @@ grid_size:  10
 
 
 #optimization
-do_bundle_adjustment: 0
-do_local_bundle_adjustment: 1
-visualize_tracking: 1
-do_motion_only_bundle_adjustment: 0
+do_bundle_adjustment: 0 #1/0
+do_local_bundle_adjustment: 1 #1/0
+do_motion_only_bundle_adjustment: 0 #1/0
 chi2_thresh: 5.0
-add_huber_kernal: 1
+add_huber_kernal: 0 #1/0
 set_window: 5
+remove_outlier: 1 #1/0
+ba_thresh: 2 #5.991 #for chi2
+out_thresh: 3 #for deleting mappoints
+gain: 0.000001
 
 # initialization
 reset_after: 15

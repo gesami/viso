@@ -14,6 +14,7 @@
 #include <g2o/core/robust_kernel_impl.h>
 #include <g2o/solvers/dense/linear_solver_dense.h>
 #include <g2o/types/sba/types_six_dof_expmap.h>
+#include "g2o/core/sparse_optimizer_terminate_action.h"
 
 #include <sophus/se3.hpp>
 
@@ -115,14 +116,23 @@ private:
 
 class Opt {
 private:
-    int BA_iteration;
-    double ba_outlier_thresh; // deviation of median disparity
-    int window;
-    int add_huber_kernal;
+    int BA_iteration= Config::get<int>("BA_iteration");
+    double ba_outlier_thresh = Config::get<double>("ba_outlier_thresh"); // deviation of median disparity
+    int window= Config::get<int>("set_window");
+    int add_huber_kernal= Config::get<int>("add_huber_kernal");
+    int remove= Config::get<int>("remove_outlier");
+    double thresh = Config::get<double>("ba_thresh");
+    double out_thresh = Config::get<double>("out_thresh");
+    double gain = Config::get<double>("gain");
+    //int BA_iteration = Config::get<int>("BA_iteration");
+    //double ba_outlier_thresh = Config::get<double>("ba_outlier_thresh"); // deviation of median disparity
+    //int window = Config::get<int>("set_window");
+    //int add_huber_kernal = Config::get<int>("add_huber_kernal");
 public:
     Opt();
     void BA_LOCAL(viso::Map* map, M3d K);
     void BA(viso::Map* map, bool map_only, int fix_cnt, M3d K);
+    void BA_LOCAL2(viso::Map* map, M3d K);
 };
 
 #endif //VISO_BUNDLE_ADJUSTER_H

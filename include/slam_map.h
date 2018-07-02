@@ -107,6 +107,12 @@ public:
         return last_keyframes_.last()->GetPose();
     }
 
+    inline void ErasePoint(int idx)
+    {
+        LOCK();
+        points_.erase(points_.begin() + idx);
+    }
+
     inline void SetCurrent(Keyframe::Ptr cur_frame)
     {
         current_frame_ = cur_frame;
