@@ -44,10 +44,10 @@ affine_warping: 1
 
 do_bundle_adjustment: 0 #1/0
 do_local_bundle_adjustment: 1 #1/0
-do_motion_only_bundle_adjustment: 0 #1/0
+do_motion_only_bundle_adjustment: 1 #1/0
 chi2_thresh: 5.0
 add_huber_kernal: 0 #1/0
-set_window: 5
+set_window: 10
 remove_outlier: 1 #1/0
 ba_thresh: 2 #5.991 #for chi2
 out_thresh: 3 #for deleting mappoints
@@ -69,7 +69,7 @@ combined_thresh: 0.25
 angle_combined_ratio: 0.4
 
 #depth filter
-df_on: 0
+df_on: 1
 df_window_size: 5
 init_a: 10
 init_b: 10

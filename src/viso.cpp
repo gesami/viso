@@ -358,10 +358,10 @@ void Viso::DirectPoseEstimationSingleLayer(int level,
 
             double cos_angle = look_dir.transpose() * map_.GetPoints()[i]->GetDirection();
 
-            if (cos_angle < 0.86602540378) { // 30 degree
+            /*if (cos_angle < 0.86602540378) { // 30 degree
                 std::cout << "DirectPoseEstimationSingleLayer: cos_angle " << cos_angle << "\n";
                 continue;
-            }
+            }*/
 
             nGood++;
 
@@ -380,8 +380,10 @@ void Viso::DirectPoseEstimationSingleLayer(int level,
             }
         }
 
+        //if(nGood < 6) return;
+
         // solve update and put it into estimation
-        V6d update = H.inverse() * b;
+        V6d update =H.inverse() * b;
 
         T21 = Sophus::SE3d::exp(update) * T21;
 
@@ -432,10 +434,10 @@ void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before,
         V3d look_dir = current_frame->GetPose().inverse() * V3d{ 0, 0, 1 };
         double cos_angle = look_dir.transpose() * map_.GetPoints()[i]->GetDirection();
 
-        if (cos_angle < 0.86602540378) { // 30 degree
+        /*if (cos_angle < 0.86602540378) { // 30 degree
             std::cout << "LKAlignment: cos_angle " << cos_angle << "\n";
             continue;
-        }
+        }*/
 
         // Find frame with best viewing angle.
         double best_angle = 180.0;
