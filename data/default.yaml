@@ -3,7 +3,7 @@
 # the tum dataset directory, change it to yours!
 
 
-dataset_dir: ./data/rgbd_dataset_freiburg1_xyz
+dataset_dir: .
 #dataset_dir: ./data/rgbd_dataset_freiburg3_structure_texture_far
 
 # camera intrinsics
@@ -38,12 +38,13 @@ max_feature: 500
 qualityLevel: 0.01
 minDistance: 10
 grid_size:  10
+better_tracker: 0
 affine_warping: 1
 
 #optimization
 
-do_bundle_adjustment: 0 #1/0
-do_local_bundle_adjustment: 1 #1/0
+do_bundle_adjustment: 1 #1/0
+do_local_bundle_adjustment: 0 #1/0
 do_motion_only_bundle_adjustment: 1 #1/0
 chi2_thresh: 5.0
 add_huber_kernal: 0 #1/0
@@ -69,7 +70,7 @@ combined_thresh: 0.25
 angle_combined_ratio: 0.4
 
 #depth filter
-df_on: 1
+df_on: 0
 df_window_size: 5
 init_a: 10
 init_b: 10

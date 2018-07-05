@@ -132,8 +132,8 @@ public:
 
                 assert(depths_[i]<10 && depths_[i]>0);
                 if(!P.hasNaN()){
-                    int kp_idx = ref_frame_->AddKeypoint(kp_[i]);
                     MapPoint::Ptr map_point = std::make_shared<MapPoint>(P);
+                    int kp_idx = ref_frame_->AddKeypoint(kp_[i], map_point);
                     map_point->AddObservation(ref_frame_, kp_idx);
                     map->AddPoint(map_point);
                     status_[i] = 2; // added to map

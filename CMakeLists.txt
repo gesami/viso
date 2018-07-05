@@ -19,18 +19,17 @@ find_package(Sophus REQUIRED)
 include_directories(${Sophus_INCLUDE_DIRS})
 
 # g2o
-#cmake_policy(SET CMP0015 NEW) # relative link directories
-#link_directories(lib/)
-#SET(G2O_LIBS g2o_core g2o_stuff g2o_types_sba)
-
-find_package(G2O REQUIRED)
-include_directories(${G2O_INCLUDE_DIRS})
-FIND_PACKAGE( CSparse )
-INCLUDE_DIRECTORIES( ${CSPARSE_INCLUDE_DIR} )
-FIND_PACKAGE( Cholmod REQUIRED )
-INCLUDE_DIRECTORIES( ${CHOLMOD_INCLUDE_DIR} )
-
+cmake_policy(SET CMP0015 NEW) # relative link directories
+link_directories(lib/)
 SET(G2O_LIBS g2o_core g2o_stuff g2o_types_sba)
+
+#find_package(G2O REQUIRED)
+#include_directories(${G2O_INCLUDE_DIRS})
+#FIND_PACKAGE( CSparse )
+#INCLUDE_DIRECTORIES( ${CSPARSE_INCLUDE_DIR} )
+#FIND_PACKAGE( Cholmod REQUIRED )
+#INCLUDE_DIRECTORIES( ${CHOLMOD_INCLUDE_DIR} )
+#SET(G2O_LIBS g2o_core g2o_stuff g2o_types_sba)
 
 include_directories(include)
 

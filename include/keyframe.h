@@ -8,12 +8,14 @@
 #include <memory>
 #include <opencv2/opencv.hpp>
 #include <sophus/se3.hpp>
+#include "map_point.h"
 
 class Keyframe {
 private:
     static long next_id_;
     long id_;
 
+    std::vector<MapPoint::Ptr> map_points_;
     std::vector<cv::KeyPoint> keypoints_;
     std::vector<cv::KeyPoint> keypoints_df_;
 
@@ -139,6 +141,7 @@ public:
         return std::acos(Pc.z());
     }
 
+    inline std::vector<MapPoint::Ptr>& MapPoints() { return map_points_; }
     inline std::vector<cv::KeyPoint>& Keypoints() { return keypoints_; }
     inline std::vector<cv::KeyPoint>& GetKeypointsDF() { return keypoints_df_; }
 
@@ -169,9 +172,10 @@ public:
         return next_id_;
     }
 
-    inline int AddKeypoint(cv::KeyPoint kp)
+    inline int AddKeypoint(cv::KeyPoint kp, MapPoint::Ptr map_point)
     {
         keypoints_.push_back(kp);
+        map_points_.push_back(map_point);
         return keypoints_.size() - 1;
     }
 
@@ -185,6 +189,11 @@ public:
     //void SetOccupied();
     void SetOccupied(std::vector<V3d> mp);
     void AddNewFeatures(std::vector<cv::KeyPoint> newfts);
+
+    void CopyKeypointsFrom(Keyframe::Ptr rhs) {
+      keypoints_ = rhs->keypoints_;
+      map_points_  = rhs->map_points_;
+    }
 };
 
 #endif

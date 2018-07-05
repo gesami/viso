@@ -19,7 +19,8 @@ private:
     enum State {
         kInitialization = 0,
         kRunning = 1,
-        kFinished = 2
+        kLostTrack = 2,
+        kFinished = 3
     };
 
     const int lk_half_patch_size = Config::get<int>("lk_half_patch_size");
@@ -108,6 +109,19 @@ private:
         V3d point3d;
     };
 
+    struct BetterTracker {
+        bool use = Config::get<int>("better_tracker");
+        Keyframe::Ptr ref_frame;
+        Keyframe::Ptr last_frame;
+
+        std::vector<bool> success;
+        int good_cnt;
+
+    } better_tracker_;
+
+    bool Track(Keyframe::Ptr ref_frame, Keyframe::Ptr cur_frame, std::vector<bool>& success, int& good_cnt);
+    void TrackSingle(std::vector<AlignmentPair>& pairs, std::vector<bool>& success, int level);
+
     void LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before, std::vector<V2d>& kp_after, std::vector<int>& tracked_points, std::vector<AlignmentPair>& alignment_pairs);
     void LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool>& success, std::vector<V2d>& kp, int level);
     M2d GetAffineWarpingMatrix(Keyframe::Ptr ref_frame, Keyframe::Ptr cur_frame, V3d Pw, V2d uv_ref);
@@ -115,12 +129,11 @@ private:
     double GetMotion(Keyframe::Ptr cur_frame);
     bool IsKeyframe(Keyframe::Ptr keyframe, int nr_tracked_points);
     double CalculateVariance2(const double& nu, const Sophus::SE3d& T21,
-        const std::vector<int>& tracked_points,
         const std::vector<AlignmentPair>& alignment_pairs);
     double RemoveOutliers(const Sophus::SE3d& T21,
         std::vector<int>& tracked_points,
         std::vector<AlignmentPair>& alignment_pairs);
-    void MotionOnlyBA(Sophus::SE3d& T21, std::vector<int>& tracked_points, std::vector<AlignmentPair>& alignment_pairs);
+    void MotionOnlyBA(Sophus::SE3d& T21, std::vector<AlignmentPair>& alignment_pairs);
     void global_ba();
     void local_ba();
 };

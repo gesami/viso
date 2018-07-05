@@ -5,9 +5,11 @@
 #ifndef VISO_MAP_POINT_H
 #define VISO_MAP_POINT_H
 
-#include "keyframe.h"
 #include "types.h"
 #include <tuple>
+
+class Keyframe;
+using KeyframePtr = std::shared_ptr<Keyframe>;
 
 class MapPoint {
 public:
@@ -18,12 +20,12 @@ public:
     {
     }
 
-    inline void AddObservation(Keyframe::Ptr keyframe, int idx)
+    inline void AddObservation(KeyframePtr keyframe, int idx)
     {
         observations_.push_back({ keyframe, idx });
     }
 
-    inline const std::vector<std::pair<Keyframe::Ptr, int> >& GetObservations()
+    inline const std::vector<std::pair<KeyframePtr, int> >& GetObservations()
     {
         return observations_;
     }
@@ -42,7 +44,7 @@ public:
     inline V3d GetDirection() { return dir_; }
 private:
     V3d Pw_;
-    std::vector<std::pair<Keyframe::Ptr, int> > observations_;
+    std::vector<std::pair<KeyframePtr, int> > observations_;
     V3d dir_;
 };
 
