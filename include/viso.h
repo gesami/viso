@@ -109,18 +109,23 @@ private:
         V3d point3d;
     };
 
-    struct BetterTracker {
-        bool use = Config::get<int>("better_tracker");
+    struct TrackedFrame {
         Keyframe::Ptr ref_frame;
-        Keyframe::Ptr last_frame;
-
+        std::vector<cv::KeyPoint> kps;
         std::vector<bool> success;
         int good_cnt;
+    };
 
+    struct BetterTracker {
+        bool use = Config::get<int>("better_tracker");
+        Keyframe::Ptr last_frame;
+        std::vector<TrackedFrame> tracked_fs;
     } better_tracker_;
 
-    bool Track(Keyframe::Ptr ref_frame, Keyframe::Ptr cur_frame, std::vector<bool>& success, int& good_cnt);
+    bool Track(BetterTracker* better_tracker, Keyframe::Ptr cur_frame);
+    std::vector<AlignmentPair> TrackFrame(TrackedFrame* tracked_f, Keyframe::Ptr last_frame, Keyframe::Ptr cur_frame);
     void TrackSingle(std::vector<AlignmentPair>& pairs, std::vector<bool>& success, int level);
+    bool SolvePnP(Sophus::SE3d& pose, const vector<vector<AlignmentPair>>& alignment_pairs_vec, const vector<vector<bool>>& success_vec);
 
     void LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before, std::vector<V2d>& kp_after, std::vector<int>& tracked_points, std::vector<AlignmentPair>& alignment_pairs);
     void LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool>& success, std::vector<V2d>& kp, int level);
@@ -130,10 +135,13 @@ private:
     bool IsKeyframe(Keyframe::Ptr keyframe, int nr_tracked_points);
     double CalculateVariance2(const double& nu, const Sophus::SE3d& T21,
         const std::vector<AlignmentPair>& alignment_pairs);
+    double CalculateVariance2Ex(const double& nu, const Sophus::SE3d& T21,
+        const std::vector<std::vector<AlignmentPair> >& alignment_pairs_vec);
     double RemoveOutliers(const Sophus::SE3d& T21,
         std::vector<int>& tracked_points,
         std::vector<AlignmentPair>& alignment_pairs);
     void MotionOnlyBA(Sophus::SE3d& T21, std::vector<AlignmentPair>& alignment_pairs);
+    void MotionOnlyBAEx(Sophus::SE3d& T21, const vector<std::vector<AlignmentPair> >& alignment_pairs_vec, const std::vector<std::vector<bool> >& success_vec);
     void global_ba();
     void local_ba();
 };

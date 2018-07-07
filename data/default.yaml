@@ -31,7 +31,7 @@ visualize_tracking: 1 #1/0
 number_of_features: 800
 lk_half_patch_size: 4
 lk_d2_factor: 0.9
-lk_photometric_thresh: 40
+lk_photometric_thresh: 30
 BA_iteration: 100
 ba_outlier_thresh: 5
 max_feature: 500
@@ -43,10 +43,10 @@ affine_warping: 1
 
 #optimization
 
-do_bundle_adjustment: 1 #1/0
-do_local_bundle_adjustment: 0 #1/0
-do_motion_only_bundle_adjustment: 1 #1/0
-chi2_thresh: 5.0
+do_bundle_adjustment: 0 #1/0
+do_local_bundle_adjustment: 1 #1/0
+do_motion_only_bundle_adjustment: 0 #1/0
+chi2_thresh: 4.0
 add_huber_kernal: 0 #1/0
 set_window: 10
 remove_outlier: 1 #1/0
@@ -57,8 +57,8 @@ gain: 0.000001
 # initialization
 reset_after: 15
 iterations: 10
-half_patch_size: 10
-photometric_thresh: 20.0
+half_patch_size: 4
+photometric_thresh: 30.0
 min_good_cnt: 100
 disparity_thresh: 25.0
 reprojection_thresh: 0.3
