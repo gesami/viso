@@ -26,6 +26,7 @@ private:
     const int lk_half_patch_size = Config::get<int>("lk_half_patch_size");
     const double lk_photometric_thresh = (lk_half_patch_size * 2) * (lk_half_patch_size * 2) * Config::get<double>("lk_photometric_thresh") * Config::get<double>("lk_photometric_thresh");
     const double lk_d2_factor = Config::get<double>("lk_d2_factor"); // deviation of median disparity
+    const int direct_half_patch_size = Config::get<int>("direct_half_patch_size");
 
     const int max_feature = Config::get<int>("max_feature");
     const double qualityLevel = Config::get<double>("qualityLevel");
@@ -98,8 +99,9 @@ public:
     inline viso::Map* GetMap() { return &map_; }
 
 private:
-    void DirectPoseEstimationSingleLayer(int level, Keyframe::Ptr current_frame, Sophus::SE3d& T21);
+    void DirectPoseEstimationSingleLayer(int level, Keyframe::Ptr current_frame, Sophus::SE3d& T21, const std::vector<MapPoint::Ptr>& tracked_points = {});
     void DirectPoseEstimationMultiLayer(Keyframe::Ptr current_frame, Sophus::SE3d& T21);
+
 
     struct AlignmentPair {
         Keyframe::Ptr ref_frame;

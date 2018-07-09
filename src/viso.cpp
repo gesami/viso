@@ -84,6 +84,13 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
             //            auto pose = better_tracker_.last_frame->GetPose();
             //            DirectPoseEstimationMultiLayer(cur_frame, pose);
             //            cur_frame->SetPose(pose);
+
+            Sophus::SE3d X = Sophus::SE3d(last_frame->GetR(), last_frame->GetT()); //Keyframe pose
+            DirectPoseEstimationMultiLayer(cur_frame, X);
+
+            cur_frame->SetR(X.rotationMatrix());
+            cur_frame->SetT(X.translation());
+
             if (Track(&better_tracker_, cur_frame) == false) {
                 state_ = kLostTrack;
                 break;
@@ -180,10 +187,36 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
             std::vector<int> tracked_points;
             std::vector<AlignmentPair> alignment_pairs;
             LKAlignment(cur_frame, kp_before, kp_after, tracked_points, alignment_pairs);
+//
+//            vector<MapPoint::Ptr> tracked_map_points;
+//            tracked_map_points.reserve(tracked_points.size());
+//            for (int i = 0; i < tracked_points.size(); ++i) {
+//                tracked_map_points.push_back(map_.GetPoints()[i]);
+//            }
+
+//            DirectPoseEstimationSingleLayer(0, cur_frame, X, tracked_map_points);
+//            //
+//            cur_frame->SetR(X.rotationMatrix());
+//            cur_frame->SetT(X.translation());
+            //
+            //            kp_before.clear();
+            //            kp_after.clear();
+            //            tracked_points.clear();
+            //            alignment_pairs.clear();
+            //            LKAlignment(cur_frame, kp_before, kp_after, tracked_points, alignment_pairs);
 
             if (add_mba) {
                 if (tracked_points.size() > 9) {
+#if 0
+                    bool ok = SolvePnP(X, { alignment_pairs }, { vector<bool>(alignment_pairs.size(), true) });
+
+                    if (!ok) {
+                        state_ = kLostTrack;
+                        break;
+                    }
+#else
                     MotionOnlyBA(X, alignment_pairs);
+#endif
                     cur_frame->SetR(X.rotationMatrix());
                     cur_frame->SetT(X.translation());
                 }
@@ -407,7 +440,7 @@ M26d dPixeldXi(const M3d& K, const M3d& R, const V3d& T, const V3d& P,
 // TODO: Move this to a separate class.
 void Viso::DirectPoseEstimationSingleLayer(int level,
     Keyframe::Ptr current_frame,
-    Sophus::SE3d& T21)
+    Sophus::SE3d& T21, const std::vector<MapPoint::Ptr>& tracked_points)
 {
     const double scale = Keyframe::scales[level];
     const double delta_thresh = 0.005;
@@ -420,21 +453,29 @@ void Viso::DirectPoseEstimationSingleLayer(int level,
 
     Sophus::SE3d best_T21 = T21;
 
-    for (int iter = 0; iter < iterations; iter++) {
+    const std::vector<MapPoint::Ptr> map_points = tracked_points.size() > 0 ? tracked_points : map_.GetPoints();
+
+    struct Result {
+        M6d H = M6d::Zero();
+        V6d b = V6d::Zero();
+        double error = 0;
+        double chi2 = 0;
+    };
+
+    for (int iter = 0; iter < iterations; ++iter) {
         nGood = 0;
 
-        // Define Hessian and bias
-        M6d H = M6d::Zero(); // 6x6 Hessian
-        V6d b = V6d::Zero(); // 6x1 bias
+        cost = 0;
+        std::vector<Result> results;
 
         current_frame->SetR(T21.rotationMatrix());
         current_frame->SetT(T21.translation());
 
         V3d look_dir = T21.inverse() * V3d{ 0, 0, 1 };
 
-        for (size_t i = 0; i < map_.GetPoints().size(); i++) {
+        for (size_t i = 0; i < map_points.size(); ++i) {
 
-            V3d P1 = map_.GetPoints()[i]->GetWorldPos();
+            V3d P1 = map_points[i]->GetWorldPos();
 
             Keyframe::Ptr frame = last_frame;
             V2d uv_ref = frame->Project(P1, level);
@@ -448,20 +489,20 @@ void Viso::DirectPoseEstimationSingleLayer(int level,
             bool hasNaN = uv_cur.array().hasNaN() || uv_ref.array().hasNaN();
             assert(!hasNaN);
 
-            bool good = frame->IsInside(u_ref - lk_half_patch_size,
-                            v_ref - lk_half_patch_size, level)
-                && frame->IsInside(u_ref + lk_half_patch_size,
-                       v_ref + lk_half_patch_size, level)
-                && current_frame->IsInside(u_cur - lk_half_patch_size,
-                       v_cur - lk_half_patch_size, level)
-                && current_frame->IsInside(u_cur + lk_half_patch_size,
-                       v_cur + lk_half_patch_size, level);
+            bool good = frame->IsInside(u_ref - direct_half_patch_size,
+                            v_ref - direct_half_patch_size, level)
+                && frame->IsInside(u_ref + direct_half_patch_size,
+                       v_ref + direct_half_patch_size, level)
+                && current_frame->IsInside(u_cur - direct_half_patch_size,
+                       v_cur - direct_half_patch_size, level)
+                && current_frame->IsInside(u_cur + direct_half_patch_size,
+                       v_cur + direct_half_patch_size, level);
 
             if (!good) {
                 continue;
             }
 
-            double cos_angle = look_dir.transpose() * map_.GetPoints()[i]->GetDirection();
+            //            double cos_angle = look_dir.transpose() * map_.GetPoints()[i]->GetDirection();
 
             /*if (cos_angle < 0.86602540378) { // 30 degree
                 std::cout << "DirectPoseEstimationSingleLayer: cos_angle " << cos_angle << "\n";
@@ -470,34 +511,114 @@ void Viso::DirectPoseEstimationSingleLayer(int level,
 
             nGood++;
 
+            Result result;
+
             M26d J_pixel_xi = dPixeldXi(K, T21.rotationMatrix(), T21.translation(),
                 P1, scale); // pixel to \xi in Lie algebra
 
-            for (int x = -lk_half_patch_size; x < lk_half_patch_size; x++) {
-                for (int y = -lk_half_patch_size; y < lk_half_patch_size; y++) {
-                    double error = frame->GetPixelValue(u_ref + x, v_ref + y, level) - current_frame->GetPixelValue(u_cur + x, v_cur + y, level);
+            for (int x = -direct_half_patch_size; x < direct_half_patch_size; x++) {
+                for (int y = -direct_half_patch_size; y < direct_half_patch_size; y++) {
+                    result.error = frame->GetPixelValue(u_ref + x, v_ref + y, level) - current_frame->GetPixelValue(u_cur + x, v_cur + y, level);
+                    result.chi2 = result.error * result.error;
                     V2d J_img_pixel = current_frame->GetGradient(u_cur + x, v_cur + y, level);
                     V6d J = -J_img_pixel.transpose() * J_pixel_xi;
-                    H += J * J.transpose();
-                    b += -error * J;
-                    cost += error * error;
+                    result.H = J * J.transpose();
+                    result.b = -result.error * J;
                 }
             }
+            results.push_back(result);
         }
 
+        M6d H = M6d::Zero();
+        V6d b = V6d::Zero();
+        double min_chi2 = std::numeric_limits<double>::max();
+        double max_chi2 = std::numeric_limits<double>::min();
+        double mean_chi2 = 0;
+        double var_chi2 = 0;
+
+        const double quantil_p = 1; //0.9;
+        double quantil_val = 0;
+
+        {
+            const int num_bins = 500;
+            std::vector<double> bins(num_bins, 0);
+
+            for (const auto& r : results) {
+                min_chi2 = std::min(min_chi2, r.chi2);
+                max_chi2 = std::max(max_chi2, r.chi2);
+                mean_chi2 += r.chi2;
+            }
+
+            mean_chi2 /= nGood;
+
+            for (const auto& r : results) {
+                double delta = r.chi2 - mean_chi2;
+                var_chi2 = delta * delta;
+            }
+
+            var_chi2 /= nGood;
+
+            double bin_size = (max_chi2 - min_chi2) / num_bins;
+
+            for (const auto& r : results) {
+                int bin = std::min(std::max((int)((r.error * r.error - min_chi2) / bin_size), 0), (num_bins - 1));
+
+                if (!(bin >= 0 && bin < num_bins)) {
+                    std::cerr << "bin: " << bin << "\n";
+                    assert(bin >= 0 && bin < num_bins);
+                }
+                bins[bin] += 1.0 / nGood;
+            }
+
+            const int bin_w = 3;
+            const int hist_h = 200;
+            Mat histImage(hist_h, num_bins * bin_w, CV_8UC3, Scalar(0, 0, 0));
+
+            double p = 0;
+            for (int i = 0; i < num_bins; ++i) {
+                p += bins[i];
+                bool inside = quantil_p >= p || i == 0;
+                if (inside) {
+                    quantil_val = min_chi2 + (i + 1) * bin_size;
+                }
+
+                line(histImage, Point(bin_w * i, hist_h),
+                    Point(bin_w * i, hist_h - cvRound(bins[i] * hist_h)),
+                    inside ? Scalar(0, 255, 0) : Scalar(0, 0, 255), bin_w / 2, 8, 0);
+            }
+
+            cv::imshow("DirectPoseEstimation Error distribution", histImage);
+            cv::waitKey(3);
+        }
+
+        nGood = 0;
+        for (const auto& r : results) {
+            if (r.chi2 > quantil_val) {
+                continue;
+            }
+            ++nGood;
+
+            double delta = mean_chi2 - r.chi2;
+            double w = 1; //delta * delta / var_chi2;
+            cost += r.chi2;
+            H += w * r.H;
+            b += w * r.b;
+        }
+
+        std::cout << "DirectPoseEstimation nGood: " << nGood << "\n";
         //if(nGood < 6) return;
 
         // solve update and put it into estimation
         V6d update = H.inverse() * b;
 
-        T21 = Sophus::SE3d::exp(update) * T21;
-
-        cost /= nGood;
-
         if (std::isnan(update[0])) {
             T21 = best_T21;
             break;
         }
+
+        T21 = Sophus::SE3d::exp(update) * T21;
+
+        cost /= nGood;
 
         if (iter > 0 && cost > lastCost) {
             T21 = best_T21;
@@ -535,6 +656,10 @@ void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before,
         if (!current_frame->IsInside(Pw, /*level=*/0)) {
             continue;
         }
+        //
+        //        if (!last_frame->IsInside(Pw, 0)) {
+        //            continue;
+        //        }
 
         V3d look_dir = current_frame->GetPose().inverse() * V3d{ 0, 0, 1 };
         double cos_angle = look_dir.transpose() * map_.GetPoints()[i]->GetDirection();
@@ -592,11 +717,92 @@ void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before,
         LKAlignmentSingle(alignment_pairs, success, kp_after, level);
     }
 
+    const double quantil_p = 0.1;
+    double quantil_v = 0;
+    std::vector<double> chi2(success.size(), 0.0);
+    int nGood = 0;
+    double chi2_mean = 0;
+    double chi2_min = std::numeric_limits<double>::max();
+    double chi2_max = std::numeric_limits<double>::min();
+
+    for (int i = 0; i < chi2.size(); ++i) {
+        if (!success[i]) {
+            continue;
+        }
+        ++nGood;
+        V2d error = alignment_pairs[i].uv_cur - current_frame->Project(alignment_pairs[i].point3d, 0);
+        chi2[i] = error.transpose() * error;
+        chi2_mean += chi2[i];
+        chi2_min = std::min(chi2_min, chi2[i]);
+        chi2_max = std::max(chi2_max, chi2[i]);
+    }
+
+    chi2_mean /= nGood;
+    const int num_bins = 500;
+    std::vector<double> bins(num_bins, 0);
+
+    double bin_size = (chi2_max - chi2_min) / num_bins;
+
+    for (int i = 0; i < chi2.size(); ++i) {
+        if (!success[i]) {
+            continue;
+        }
+        int bin = std::min(std::max((int)((chi2[i] - chi2_min) / bin_size), 0), (num_bins - 1));
+
+        if (!(bin >= 0 && bin < num_bins)) {
+            std::cerr << "bin: " << bin << "\n";
+            assert(bin >= 0 && bin < num_bins);
+        }
+
+        bins[bin] += 1.0 / nGood;
+    }
+
+    const int bin_w = 3;
+    const int hist_h = 200;
+    Mat histImage(hist_h, num_bins * bin_w, CV_8UC3, Scalar(0, 0, 0));
+
+    double p = 0;
+    double peak_v = chi2_min;
+    double peak_bin_v = bins[0];
+    int peak_i = -1;
+
+    for (int i = 0; i < num_bins; ++i) {
+        p += bins[i];
+        bool inside = quantil_p >= p || i == 0;
+        if (inside) {
+            quantil_v = chi2_min + (i + 1) * bin_size;
+        }
+
+        line(histImage, Point(bin_w * i, hist_h),
+            Point(bin_w * i, hist_h - cvRound(bins[i] * hist_h)),
+            inside ? Scalar(0, 255, 0) : Scalar(0, 0, 255), bin_w / 2, 8, 0);
+    }
+
+    cv::imshow("LkAlignment Error distribution", histImage);
+    cv::waitKey(0);
+
+    double thresh = chi2_thresh;
+    if (quantil_v > chi2_thresh) {
+        thresh = std::numeric_limits<double>::min();
+    }
+
+    for (int i = 0; i < chi2.size(); ++i) {
+        if (!success[i]) {
+            continue;
+        }
+
+        if (chi2[i] > thresh) {
+            success[i] = false;
+            --nGood;
+        }
+    }
+
+    std::cout << "LkAlignment:\nnGood:" << nGood << "\nchi2_min: " << chi2_min << "\nchi2_max: " << chi2_max << "\nchi2_mean: " << chi2_mean << "\nquantil_v" << quantil_v << "\n";
 /////////////////////////////////////////////////////
 /////////////////////////////////////////////////////
 
 #if 0
-    const int grid_size = 3;
+    const int grid_size = 5;
 
     struct D2 {
         std::vector<double> dx2;
@@ -662,7 +868,8 @@ void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before,
 
     /////////////////////////////////////////////////////
     /////////////////////////////////////////////////////
-#else
+#endif
+#if 0
     // reduce tracking outliers
     std::vector<double> d2;
     for (int i = 0; i < kp_before.size(); ++i) {
@@ -875,8 +1082,8 @@ bool Viso::Track(BetterTracker* better_tracker, Keyframe::Ptr cur_frame)
     Sophus::SE3d pose
         = cur_frame->GetPose();
 
-#if 0
-    MotionOnlyBAEx(pose, alignment_pairs_vec, success_vecc);
+#if 1
+    MotionOnlyBAEx(pose, alignment_pairs_vec, success_vec);
 #else
     SolvePnP(pose, alignment_pairs_vec, success_vec);
 #endif
@@ -960,7 +1167,7 @@ bool Viso::SolvePnP(Sophus::SE3d& pose, const vector<vector<AlignmentPair> >& al
     cv::Mat inliers;
     if (
         solvePnPRansac(p3d, p2d, camera_matrix, dist_coeffs, rotation_vector, translation_vector,
-            /* use extrinsic guess */ true, /* iterations */ 100, /* reproj. error */ 1.0, /*confidence*/ 0.99, inliers)
+            /* use extrinsic guess */ true, /* iterations */ 100, /* reproj. error */ 2.0, /*confidence*/ 0.99, inliers)
         == false) {
         std::cout << "solvePnPRansac failed\n";
         return false;
@@ -998,9 +1205,8 @@ std::vector<Viso::AlignmentPair> Viso::TrackFrame(TrackedFrame* tracked_f, Keyfr
         // Keep track...
         if (tracked_f->success[i]) {
             pair.uv_cur = V2d{ tracked_f->kps[i].pt.x, tracked_f->kps[i].pt.y };
-            pair.ref_frame = tracked_f->ref_frame;
-            pair.uv_ref = V2d{ tracked_f->ref_frame->Keypoints()[i].pt.x, tracked_f->ref_frame->Keypoints()[i].pt.y };
-            ;
+            pair.ref_frame = last_frame;
+            pair.uv_ref = V2d{ tracked_f->kps[i].pt.x, tracked_f->kps[i].pt.y };
             // or try to track lost map points.
         } else {
             V2d uv = cur_frame->Project(ref_mps[i]->GetWorldPos(), /*level =*/0);
@@ -1030,7 +1236,7 @@ std::vector<Viso::AlignmentPair> Viso::TrackFrame(TrackedFrame* tracked_f, Keyfr
         }
     }
 
-    const int grid_size = 3;
+    const int grid_size = 5;
 
     struct D2 {
         std::vector<double> dx2;
@@ -1092,7 +1298,7 @@ std::vector<Viso::AlignmentPair> Viso::TrackFrame(TrackedFrame* tracked_f, Keyfr
             assert(cell_row >= 0 && cell_row < grid_size);
             assert(cell_col >= 0 && cell_col < grid_size);
 
-            if (d2.dx2[j] > grid_m[cell_row * grid_size + cell_col].mx2 * lk_d2_factor || d2.dx2[j] < grid_m[cell_row * grid_size + cell_col].mx2 / lk_d2_factor || d2.dy2[j] > grid_m[cell_row * grid_size + cell_col].my2 * lk_d2_factor || d2.dy2[j] < grid_m[cell_row * grid_size + cell_col].my2 / lk_d2_factor) {
+            if (d2.dx2[j] > grid_m[cell_row * grid_size + cell_col].mx2 * lk_d2_factor || d2.dy2[j] > grid_m[cell_row * grid_size + cell_col].my2 * lk_d2_factor) {
                 tracked_f->success[i] = false;
             }
             ++j;
@@ -1218,7 +1424,6 @@ std::vector<Viso::AlignmentPair> Viso::TrackFrame(TrackedFrame* tracked_f, Keyfr
 void Viso::TrackSingle(std::vector<AlignmentPair>& pairs, std::vector<bool>& success, int level)
 {
     const int iterations = 100;
-    const bool inverse = true;
 
     int j = 0;
     for (size_t i = 0; i < success.size(); ++i) {
@@ -1264,14 +1469,10 @@ void Viso::TrackSingle(std::vector<AlignmentPair>& pairs, std::vector<bool>& suc
             // compute cost and jacobian
             for (int x = -lk_half_patch_size; x < lk_half_patch_size; x++) {
                 for (int y = -lk_half_patch_size; y < lk_half_patch_size; y++) {
-                    V2d uv_cur_warped = A * V2d{ x, y } + V2d{ pair.uv_cur.x() * Keyframe::scales[level] + dx, pair.uv_cur.y() * Keyframe::scales[level] + dy };
-                    V2d J;
-                    if (!inverse) {
-                        J = -pair.cur_frame->GetGradient(pair.uv_cur.x() * Keyframe::scales[level] + x + dx, pair.uv_cur.y() * Keyframe::scales[level] + y + dy, level);
-                    } else {
-                        J = -pair.ref_frame->GetGradient(pair.uv_ref.x() * Keyframe::scales[level] + x, pair.uv_ref.y() * Keyframe::scales[level] + y, level);
-                    }
-                    error = pair.ref_frame->GetPixelValue(pair.uv_ref.x() * Keyframe::scales[level] + x, pair.uv_ref.y() * Keyframe::scales[level] + y, level) - pair.cur_frame->GetPixelValue(pair.uv_cur.x() * Keyframe::scales[level] + x + dx, pair.uv_cur.y() * Keyframe::scales[level] + y + dy, level);
+                    V2d uv_cur = pair.uv_cur * Keyframe::scales[level] + V2d{ x + dx, y + dy };
+                    V2d uv_ref = pair.uv_ref * Keyframe::scales[level] + V2d{ x, y };
+                    V2d J = -pair.ref_frame->GetGradient(uv_ref.x(), uv_ref.y(), level);
+                    error = pair.ref_frame->GetPixelValue(uv_ref.x(), uv_ref.y(), level) - pair.cur_frame->GetPixelValue(uv_cur.x(), uv_cur.y(), level);
 
                     // compute H, b and set cost;
                     H += J * J.transpose();
@@ -1313,7 +1514,7 @@ void Viso::TrackSingle(std::vector<AlignmentPair>& pairs, std::vector<bool>& suc
         // update only if successful, otherwise we will update it with a
         // probably diverged value, which then will serve as a start value for lower
         // levels.
-        if (succ) {
+        if (succ || level == 0) {
             pair.uv_cur += V2d{ dx / Keyframe::scales[level], dy / Keyframe::scales[level] };
         }
 

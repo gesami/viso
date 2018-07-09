@@ -72,6 +72,7 @@ private:
     int min_good_cnt_;
     double disparity2_thresh_;
     double reprojection_thresh_;
+    double quality_level_;
 };
 
 #endif //VISO_INITIALIZER_H
