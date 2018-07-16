@@ -33,10 +33,10 @@ class depth_filter {
     const int ncc_area = (2 * ncc_window_size + 1) * (2 * ncc_window_size + 1); // NCC window area
     // const double min_cov = 0.1; // convergence determination: minimum variance
     const double max_cov = 10; // divergence determination: maximum variance
-    double z_range = 5;
-    double init_depth = 1; 
-    double init_cov2 = 5;
-    double min_cov = z_range/200.0;
+    double z_range = 5;        // the value 1/minimum_depth  assume it now to be 5
+    double init_depth = 1;     // initial depth
+    double init_cov2 = 5;       //  initial covariance
+    double min_cov = z_range/200.0;     //  as shown in svo paper
     
     double photometric_thresh = Config::get<double>("photometric_thresh"); 
     double width = Config::get<double>("image_width");
@@ -57,16 +57,18 @@ class depth_filter {
 private:
     Keyframe::Ptr ref_frame_;
     std::vector<cv::KeyPoint> kp_;
-    std::vector<double> depths_;      // inverse gaussian coordinate
-    std::vector<double> depths_cov_;  
+    std::vector<double> depths_;      // inverse depth coordinate
+    std::vector<double> depths_cov_;  // covariance for inverse depth
     std::vector<double> beta_a;       // beta distribution
 	std::vector<double> beta_b;
-    std::vector<int> status_;
+    std::vector<int> status_;         // status to indicate if the points are converging or converged or already updated
     int current_iteration_;
 
     Keyframe::Ptr cur_frame_;
 
 public:
+    
+    // class initialization
     depth_filter(Keyframe::Ptr ref_frame)
         : ref_frame_(ref_frame)
         , kp_(ref_frame_->GetKeypointsDF())
@@ -94,20 +96,19 @@ public:
         current_iteration_ = 0;
     }
 
-    // This should be called, after the filter IsDone() == true
+    // Updating the converged points
     void UpdateMap(viso::Map* map, Keyframe::Ptr cur_frame)
     {
         Mat ref = ref_frame_->GetMat();    // reference image
         std::vector<Keyframe::Ptr> lkf = map->LastKeyframes();
-        // Mat curr = cur_frame->GetMat();
-        // double photo_error = 0;
+        
+        // check if photometric error of current depth consistent with past keyframes
         for (int i = 0; i < kp_.size(); ++i) {
             if (status_[i] == 1) {
                 V3d P = ref_frame_->GetPose().inverse() * (depths_[i] * px2cam({ kp_[i].pt.x, kp_[i].pt.y }));
                 int bad_observation=0; 
                 // use only last two keyframes
                 for(int j=lkf.size()-3; j<lkf.size()-1;j++){
-                //for(int j=0; j<lkf.size();j++){
                     double photo_error = 0;
                     Mat curr = lkf[j]->GetMat();
                     SE3d pose_curr_TWC = lkf[j]->GetPose();
@@ -123,13 +124,13 @@ public:
                     if ( photo_error > photometric_thresh*photo_area)
                         bad_observation++;
                 }
-
                 //cout << " bad observation number " << bad_observation << endl;
                 if( bad_observation > 0){
                     status_[i] = 0;
                     continue;
                 }
 
+                // update map points 
                 assert(depths_[i]<10 && depths_[i]>0);
                 if(!P.hasNaN()){
                     MapPoint::Ptr map_point = std::make_shared<MapPoint>(P);
@@ -144,15 +145,8 @@ public:
         }
     }
     
-    // TODO clear the outliers
-    void Clear_outliers();
-    
     void Update(Keyframe::Ptr cur_frame)
     {
-        /*
-        if (IsDone()) {
-            return;
-        } */
 
         cur_frame_ = cur_frame;
 

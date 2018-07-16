@@ -2,16 +2,16 @@
 # data
 # the tum dataset directory, change it to yours!
 
-
-dataset_dir: .
+dataset_dir: /home/wpy/code/rgbd_dataset_freiburg3_long_office_household/
+#dataset_dir: /home/wpy/code/rgbd3/
 #dataset_dir: ./data/rgbd_dataset_freiburg3_structure_texture_far
 
 # camera intrinsics
 # fr1
-camera.fx: 517.3
-camera.fy: 516.5
-camera.cx: 318.6
-camera.cy: 255.3
+#camera.fx: 517.3
+#camera.fy: 516.5
+#camera.cx: 318.6
+#camera.cy: 255.3
 
 # fr2
 #camera.fx: 520.9
@@ -21,10 +21,10 @@ camera.cy: 255.3
 
 #dataset_dir: /home/sage/Downloads/rgbd_dataset_freiburg3_structure_texture_near
 # fr3
-#camera.fx: 535.4
-#camera.fy: 539.2
-#camera.cx: 320.1
-#camera.cy: 247.6
+camera.fx: 535.4
+camera.fy: 539.2
+camera.cx: 320.1
+camera.cy: 247.6
 
 # VO Parameters
 visualize_tracking: 1 #1/0
@@ -70,7 +70,7 @@ combined_thresh: 0.25
 angle_combined_ratio: 0.4
 
 #depth filter
-df_on: 0
+df_on: 1
 df_window_size: 5
 init_a: 10
 init_b: 10

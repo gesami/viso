@@ -13,24 +13,27 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
 {
     static depth_filter* filter = nullptr;
 
-    // TODO: Clean this up.
+    // set intrinstic parameters
     cur_frame->SetK(K);
 
     switch (state_) {
     case kInitialization: {
-        // Visualization
+        // if not yet initialized
         cv::Mat img;
         cv::cvtColor(cur_frame->Mat(), img, CV_GRAY2BGR);
         std::string first;
         bool initialized = initializer.InitializeMap(cur_frame, &map_, img, first);
+        // Visualization
         if (vis) {
             cv::imshow("Tracked", img);
             cv::waitKey(10);
         }
+        // if initialization successful
         if (initialized) {
             state_ = kRunning;
-            opt.BA(&map_, true, 1, K);
+            opt.BA(&map_, true, 1, K);  // do the batch optinmiztion
             do_ba_ = false;
+            // record pose
             k2f = Sophus::SE3d(M3d::Identity(), V3d::Zero());
             f2f = Sophus::SE3d(cur_frame->GetR(), cur_frame->GetT());
             ///for trajectory record
@@ -76,9 +79,10 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
         }
     } break;
 
+    // if already initialized
     case kRunning: {
         std::lock_guard<std::mutex> lock(update_map_);
-
+        // modified tracking
         if (better_tracker_.use) {
 
             // Use last frame's keypoints and pose as starting values.
@@ -175,12 +179,15 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
 
             better_tracker_.last_frame = cur_frame;
         } else {
+            // original tracking method
             Sophus::SE3d X = Sophus::SE3d(last_frame->GetR(), last_frame->GetT()); //Keyframe pose
+            
+            // pose estimation using direct method
             DirectPoseEstimationMultiLayer(cur_frame, X);
-
             cur_frame->SetR(X.rotationMatrix());
             cur_frame->SetT(X.translation());
 
+            // LKAlignment
             std::vector<V2d> kp_before, kp_after;
             std::vector<int> tracked_points;
             std::vector<AlignmentPair> alignment_pairs;
@@ -202,6 +209,7 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
             ref_key.push_back(map_.GetKeyid());
             ref_pose.push_back(k2f);
 
+            // show image
             if (vis) {
                 // show image
                 cv::Mat display;
@@ -216,6 +224,7 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
                 cv::waitKey(10);
             }
 
+            // determine if current frame should be a keyframe
             if (IsKeyframe(cur_frame, tracked_points.size())) {
 
                 map_.AddKeyframe(cur_frame);
@@ -252,8 +261,6 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
                 filter->UpdateMap(&map_, cur_frame);
             }
         }
-
-        //        RemoveOutliers(X, tracked_points, alignment_pairs);
 
     } break;
 

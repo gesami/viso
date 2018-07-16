@@ -30,7 +30,7 @@ int main(int argc, char const* argv[])
     //
     //Process data set 
     //
-    Config::setParameterFile(argv[1]);
+    Config::setParameterFile("../data/default.yaml");
     string dataset_dir = Config::get<string>("dataset_dir");
     ifstream fin(dataset_dir + "/rgb.txt");
     if (!fin) {
