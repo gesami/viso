@@ -187,17 +187,17 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
             std::vector<int> tracked_points;
             std::vector<AlignmentPair> alignment_pairs;
             LKAlignment(cur_frame, kp_before, kp_after, tracked_points, alignment_pairs);
-//
-//            vector<MapPoint::Ptr> tracked_map_points;
-//            tracked_map_points.reserve(tracked_points.size());
-//            for (int i = 0; i < tracked_points.size(); ++i) {
-//                tracked_map_points.push_back(map_.GetPoints()[i]);
-//            }
+            //
+            //            vector<MapPoint::Ptr> tracked_map_points;
+            //            tracked_map_points.reserve(tracked_points.size());
+            //            for (int i = 0; i < tracked_points.size(); ++i) {
+            //                tracked_map_points.push_back(map_.GetPoints()[i]);
+            //            }
 
-//            DirectPoseEstimationSingleLayer(0, cur_frame, X, tracked_map_points);
-//            //
-//            cur_frame->SetR(X.rotationMatrix());
-//            cur_frame->SetT(X.translation());
+            //            DirectPoseEstimationSingleLayer(0, cur_frame, X, tracked_map_points);
+            //            //
+            //            cur_frame->SetR(X.rotationMatrix());
+            //            cur_frame->SetT(X.translation());
             //
             //            kp_before.clear();
             //            kp_after.clear();
@@ -207,16 +207,23 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
 
             if (add_mba) {
                 if (tracked_points.size() > 9) {
-#if 0
-                    bool ok = SolvePnP(X, { alignment_pairs }, { vector<bool>(alignment_pairs.size(), true) });
+#if 1
+                    bool ok = SolvePnPSingle(X, alignment_pairs);
 
-                    if (!ok) {
-                        state_ = kLostTrack;
-                        break;
+                    if (!ok ) {
+                      std::cout << "SolvePnPSingle not successful\n";
+//                      DirectPoseEstimationMultiLayer(cur_frame, X);
+
+//                      state_ = kLostTrack;
+                      break;
                     }
 #else
                     MotionOnlyBA(X, alignment_pairs);
+                    RemoveOutliers(X, alignment_pairs);
+                    //
+                    MotionOnlyBA(X, alignment_pairs);
 #endif
+                    std::cout << "motion: " << GetMotionEx(last_frame, X) << "\n";
                     cur_frame->SetR(X.rotationMatrix());
                     cur_frame->SetT(X.translation());
                 }
@@ -230,6 +237,12 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
             ref_key.push_back(map_.GetKeyid());
             ref_pose.push_back(k2f);
 
+          if(step_through == 1) {
+            cv::waitKey(0);
+          } else {
+            cv::waitKey(10);
+          }
+
             if (vis) {
                 // show image
                 cv::Mat display;
@@ -241,7 +254,8 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
                 }
 
                 cv::imshow("Tracked", display);
-                cv::waitKey(10);
+
+
             }
 
             if (IsKeyframe(cur_frame, tracked_points.size())) {
@@ -536,7 +550,7 @@ void Viso::DirectPoseEstimationSingleLayer(int level,
         double mean_chi2 = 0;
         double var_chi2 = 0;
 
-        const double quantil_p = 1; //0.9;
+        const double quantil_p = 1;
         double quantil_val = 0;
 
         {
@@ -593,13 +607,13 @@ void Viso::DirectPoseEstimationSingleLayer(int level,
 
         nGood = 0;
         for (const auto& r : results) {
-            if (r.chi2 > quantil_val) {
-                continue;
-            }
+//            if (r.chi2 > quantil_val) {
+//                continue;
+//            }
             ++nGood;
 
-            double delta = mean_chi2 - r.chi2;
-            double w = 1; //delta * delta / var_chi2;
+//            double delta = mean_chi2 - r.chi2;
+            double w = 1 - (r.chi2 - min_chi2) / (max_chi2 - min_chi2); //delta * delta / var_chi2;
             cost += r.chi2;
             H += w * r.H;
             b += w * r.b;
@@ -657,9 +671,9 @@ void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before,
             continue;
         }
         //
-        //        if (!last_frame->IsInside(Pw, 0)) {
-        //            continue;
-        //        }
+        //                if (!last_frame->IsInside(Pw, 0)) {
+        //                    continue;
+        //                }
 
         V3d look_dir = current_frame->GetPose().inverse() * V3d{ 0, 0, 1 };
         double cos_angle = look_dir.transpose() * map_.GetPoints()[i]->GetDirection();
@@ -717,27 +731,52 @@ void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before,
         LKAlignmentSingle(alignment_pairs, success, kp_after, level);
     }
 
-    const double quantil_p = 0.1;
-    double quantil_v = 0;
+    const double quantil_ph = 0.9;
+    const double quantil_pl = 0.1;
+    double quantil_vh = 0;
+    double quantil_vl = 0;
     std::vector<double> chi2(success.size(), 0.0);
     int nGood = 0;
     double chi2_mean = 0;
     double chi2_min = std::numeric_limits<double>::max();
     double chi2_max = std::numeric_limits<double>::min();
+    double chi2_std = 0.0;
+
+    // Coarse selection.
+    for (int i = 0; i < chi2.size(); ++i) {
+        if (!success[i]) {
+            continue;
+        }
+
+        V2d error = alignment_pairs[i].uv_cur - alignment_pairs[i].cur_frame->Project(alignment_pairs[i].point3d, 0);
+        chi2[i] = error.transpose() * error;
+
+        if(chi2[i] > chi2_thresh) {
+          success[i] = false;
+        }
+    }
 
     for (int i = 0; i < chi2.size(); ++i) {
         if (!success[i]) {
             continue;
         }
         ++nGood;
-        V2d error = alignment_pairs[i].uv_cur - current_frame->Project(alignment_pairs[i].point3d, 0);
-        chi2[i] = error.transpose() * error;
+
         chi2_mean += chi2[i];
         chi2_min = std::min(chi2_min, chi2[i]);
         chi2_max = std::max(chi2_max, chi2[i]);
     }
 
     chi2_mean /= nGood;
+
+    for (int i = 0; i < chi2.size(); ++i) {
+        double tmp = (chi2[i] - chi2_mean);
+        chi2_std += tmp * tmp;
+    }
+
+    chi2_std /= nGood;
+    chi2_std = std::sqrt(chi2_std);
+
     const int num_bins = 500;
     std::vector<double> bins(num_bins, 0);
 
@@ -764,13 +803,26 @@ void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before,
     double p = 0;
     double peak_v = chi2_min;
     double peak_bin_v = bins[0];
-    int peak_i = -1;
+    int peak_i = 0;
 
     for (int i = 0; i < num_bins; ++i) {
         p += bins[i];
-        bool inside = quantil_p >= p || i == 0;
-        if (inside) {
-            quantil_v = chi2_min + (i + 1) * bin_size;
+
+        bool inside_h = quantil_ph >= p || i == 0;
+        if (inside_h) {
+            quantil_vh = chi2_min + (i + 1) * bin_size;
+        }
+
+        bool inside_l = quantil_pl <= p;
+        if (!inside_l) {
+          quantil_vl = chi2_min + (i + 1) * bin_size;
+        }
+
+        bool inside = inside_h && inside_l;
+
+        if (bins[i] > peak_bin_v) {
+            peak_i = i;
+            peak_bin_v = bins[i];
         }
 
         line(histImage, Point(bin_w * i, hist_h),
@@ -779,25 +831,31 @@ void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before,
     }
 
     cv::imshow("LkAlignment Error distribution", histImage);
-    cv::waitKey(0);
+    cv::waitKey(3);
 
-    double thresh = chi2_thresh;
-    if (quantil_v > chi2_thresh) {
-        thresh = std::numeric_limits<double>::min();
-    }
-
+    double thresh_u = chi2_mean + chi2_thresh_me;
+    double thresh_l = chi2_mean - chi2_thresh_me;
+//    //    if (quantil_v > chi2_thresh) {
+//    //        thresh = std::numeric_limits<double>::min();
+//    //    }
+//
+//    const double thresh = chi2_min + chi2_thresh;
+//
     for (int i = 0; i < chi2.size(); ++i) {
         if (!success[i]) {
             continue;
         }
 
-        if (chi2[i] > thresh) {
+        if (chi2[i] > quantil_vh || chi2[i] < quantil_vl) {
             success[i] = false;
             --nGood;
         }
     }
 
-    std::cout << "LkAlignment:\nnGood:" << nGood << "\nchi2_min: " << chi2_min << "\nchi2_max: " << chi2_max << "\nchi2_mean: " << chi2_mean << "\nquantil_v" << quantil_v << "\n";
+    std::cout << "LkAlignment:\nnGood:" << nGood << "\nchi2_min: "
+              << chi2_min << "\nchi2_max: " << chi2_max << "\nchi2_mean: "
+              << chi2_mean << "\nchi2_std: " << chi2_std << "\nquantil_vh: " << quantil_vh << "\nquantil_vl: " << quantil_vl << "\nthresh_u: "
+              << thresh_u << "\nthresh_l: " << thresh_l << "\n";
 /////////////////////////////////////////////////////
 /////////////////////////////////////////////////////
 
@@ -1183,6 +1241,65 @@ bool Viso::SolvePnP(Sophus::SE3d& pose, const vector<vector<AlignmentPair> >& al
 
     pose.translation() = translation_vector_eigen;
     pose.setRotationMatrix(R_eig);
+
+    return true;
+}
+
+bool Viso::SolvePnPSingle(Sophus::SE3d& pose, vector<AlignmentPair>& alignment_pairs)
+{
+    cv::Mat camera_matrix = (cv::Mat_<float>(3, 3) << K(0, 0), 0.0, K(0, 2), 0.0, K(1, 1), K(1, 2), 0.0, 0.0, 1.0);
+
+    cv::Mat dist_coeffs = cv::Mat::zeros(4, 1, cv::DataType<double>::type); // Assuming no lens distortion
+    std::vector<cv::Point3f> p3d;
+    std::vector<cv::Point2f> p2d;
+
+    for (int i = 0; i < alignment_pairs.size(); ++i) {
+        p3d.push_back({ (float)alignment_pairs[i].point3d[0], (float)alignment_pairs[i].point3d[1], (float)alignment_pairs[i].point3d[2] });
+        p2d.push_back({ (float)alignment_pairs[i].uv_cur[0], (float)alignment_pairs[i].uv_cur[1] });
+    }
+
+    if (p3d.size() < 4) {
+        std::cout << "Not enough points\n";
+        return false;
+    }
+
+    Eigen::AngleAxisd angle_axis(pose.rotationMatrix());
+    V3d rotation_vector_eig = angle_axis.axis() * angle_axis.angle();
+    cv::Mat rotation_vector;
+    cv::eigen2cv(rotation_vector_eig, rotation_vector);
+
+    cv::Mat translation_vector;
+    cv::eigen2cv(pose.translation(), translation_vector);
+
+    cv::Mat inliers;
+    if (
+        solvePnPRansac(p3d, p2d, camera_matrix, dist_coeffs, rotation_vector, translation_vector,
+            /* use extrinsic guess */ true, /* iterations */ 100, /* reproj. error */ chi2_thresh_me, /*confidence*/ 0.99, inliers)
+        == false) {
+        std::cout << "solvePnPRansac failed\n";
+        return false;
+    };
+
+    V3d translation_vector_eigen = V3d::Zero();
+    M3d R_eig = M3d::Zero();
+    cv::Mat R;
+    cv::Rodrigues(rotation_vector, R);
+
+    cv::cv2eigen(R, R_eig);
+    cv::cv2eigen(translation_vector, translation_vector_eigen);
+
+    pose.translation() = translation_vector_eigen;
+    pose.setRotationMatrix(R_eig);
+
+    int j = 0;
+    for (auto ap_iter = alignment_pairs.begin(); ap_iter != alignment_pairs.end();) {
+        if (!inliers.at<bool>(j)) {
+            ap_iter = alignment_pairs.erase(ap_iter);
+        } else {
+            ++ap_iter;
+        }
+        ++j;
+    }
 
     return true;
 }
@@ -1593,6 +1710,22 @@ double Viso::GetMotion(Keyframe::Ptr cur_frame)
     return (distance + angle_combined_ratio * angle);
 }
 
+double Viso::GetMotionEx(Keyframe::Ptr ref_frame, Sophus::SE3d pose){
+  V3d last_T = ref_frame->GetPose().translation();
+  V3d cur_T = pose.translation();
+  V3d delta_T = (cur_T - last_T);
+  double distance = delta_T.norm();
+
+  M3d last_R = ref_frame->GetPose().rotationMatrix();
+  M3d cur_R = pose.rotationMatrix();
+  M3d delta_R = cur_R.transpose() * last_R;
+  double angle = std::abs(std::acos((delta_R(0, 0) + delta_R(1, 1) + delta_R(2, 2) - 1) * 0.5));
+
+  return (distance + angle_combined_ratio * angle);
+
+}
+
+
 double Viso::CalculateVariance2(const double& nu, const Sophus::SE3d& T21,
     const std::vector<AlignmentPair>& alignment_pairs)
 {
@@ -1678,25 +1811,20 @@ double Viso::CalculateVariance2Ex(const double& nu, const Sophus::SE3d& T21,
 }
 
 double Viso::RemoveOutliers(const Sophus::SE3d& T21,
-    std::vector<int>& tracked_points,
     std::vector<AlignmentPair>& alignment_pairs)
 {
-    std::vector<MapPoint::Ptr> map_points = map_.GetPoints();
-    auto iter1 = alignment_pairs.begin();
-    for (auto iter = tracked_points.begin(); iter != tracked_points.end();) {
 
-        V3d global = map_points[*iter]->GetWorldPos();
+    for (auto ap_iter = alignment_pairs.begin(); ap_iter != alignment_pairs.end();) {
+        V3d global = (*ap_iter).point3d;
         V3d local = T21 * global;
         V2d uv = V2d{ local[0] * K(0, 0) / local[2] + K(0, 2), local[1] * K(1, 1) / local[2] + K(1, 2) };
-        V2d error = (V2d)((*iter1).uv_cur - uv);
+        V2d error = (V2d)((*ap_iter).uv_cur - uv);
         double chi2 = error.transpose() * error;
 
-        if (chi2 > chi2_thresh) {
-            iter1 = alignment_pairs.erase(iter1);
-            iter = tracked_points.erase(iter);
+        if (chi2 > chi2_thresh_me) {
+            ap_iter = alignment_pairs.erase(ap_iter);
         } else {
-            ++iter;
-            ++iter1;
+            ++ap_iter;
         }
     }
 }
@@ -1775,19 +1903,29 @@ void Viso::MotionOnlyBAEx(Sophus::SE3d& T21, const vector<std::vector<AlignmentP
 
 void Viso::MotionOnlyBA(Sophus::SE3d& T21, std::vector<AlignmentPair>& alignment_pairs)
 {
-    assert(alignment_pairs.size() > 0);
-
     //    std::cout << "MBA start\n";
     const int mba_max_iterations = 100;
-    const double nu = 5.0;
-    std::vector<MapPoint::Ptr> map_points = map_.GetPoints();
+    //    const double nu = 5.0;
+    //    std::vector<MapPoint::Ptr> map_points = map_.GetPoints();
 
     double last_cost = 0;
     double initial_cost = 0;
     int iter = 0;
 
-    double chi2_min = 99999999;
-    double chi2_max = 0;
+    double chi2_min = std::numeric_limits<double>::max();
+    double chi2_max = std::numeric_limits<double>::min();
+    double chi2_mean = 0;
+    double chi2_var = 0;
+
+    const double quantil_p = 0.7;
+    double quantil_val = 0;
+
+    struct Result {
+        M6d H = M6d::Zero();
+        V6d b = V6d::Zero();
+        V2d error = V2d::Zero();
+        double chi2 = 0;
+    };
 
     //    const M6d Sigma_inv = 0 * M6d::Identity();
     //    V6d last_tangent = last_frame->GetPose().log();
@@ -1796,24 +1934,97 @@ void Viso::MotionOnlyBA(Sophus::SE3d& T21, std::vector<AlignmentPair>& alignment
         M6d H = M6d::Zero();
         V6d b = V6d::Zero();
         double cost = 0;
-        double sigma2 = CalculateVariance2(nu, T21, alignment_pairs);
+        //        double sigma2 = CalculateVariance2(nu, T21, alignment_pairs);
+
+        vector<Result> results;
 
         for (int i = 0; i < alignment_pairs.size(); ++i) {
             V3d global = alignment_pairs[i].point3d;
             V3d local = T21 * global;
             V2d uv = V2d{ local[0] * K(0, 0) / local[2] + K(0, 2), local[1] * K(1, 1) / local[2] + K(1, 2) };
-            V2d error = (V2d)(alignment_pairs[i].uv_cur - uv);
-            double chi2 = error.transpose() * error;
-            chi2_min = std::min(chi2, chi2_min);
-            chi2_max = std::max(chi2, chi2_max);
-            double w = (nu + 1) / (nu + chi2 / sigma2);
+
+            Result result;
+            result.error = (V2d)(alignment_pairs[i].uv_cur - uv);
+            result.chi2 = result.error.transpose() * result.error;
+            chi2_min = std::min(result.chi2, chi2_min);
+            chi2_max = std::max(result.chi2, chi2_max);
+            double w = 1; //(nu + 1) / (nu + chi2 / sigma2);
 
             M26d J = -dPixeldXi(K, T21.rotationMatrix(), T21.translation(), global, 1.0);
-            cost += w * chi2;
 
-            H += w * J.transpose() * J;
-            b += -w * error.transpose() * J;
+            result.H = J.transpose() * J;
+            result.b = -result.error.transpose() * J;
+
+            results.push_back(result);
         }
+
+        {
+            const int num_bins = 500;
+            std::vector<double> bins(num_bins, 0);
+
+            int nGood = 0;
+            for (const auto& r : results) {
+                chi2_min = std::min(chi2_min, r.chi2);
+                chi2_max = std::max(chi2_max, r.chi2);
+                chi2_mean += r.chi2;
+                ++nGood;
+            }
+
+            chi2_mean /= nGood;
+
+            for (const auto& r : results) {
+                double delta = r.chi2 - chi2_mean;
+                chi2_var = delta * delta;
+            }
+
+            chi2_var /= nGood;
+
+            double bin_size = (chi2_max - chi2_min) / num_bins;
+
+            for (const auto& r : results) {
+                int bin = std::min(std::max((int)((r.chi2 - chi2_min) / bin_size), 0), (num_bins - 1));
+
+                if (!(bin >= 0 && bin < num_bins)) {
+                    std::cerr << "bin: " << bin << "\n";
+                    assert(bin >= 0 && bin < num_bins);
+                }
+                bins[bin] += 1.0 / nGood;
+            }
+
+            const int bin_w = 3;
+            const int hist_h = 200;
+            Mat histImage(hist_h, num_bins * bin_w, CV_8UC3, Scalar(0, 0, 0));
+
+            double p = 0;
+            for (int i = 0; i < num_bins; ++i) {
+                p += bins[i];
+                bool inside = quantil_p >= p || i == 0;
+                if (inside) {
+                    quantil_val = chi2_min + (i + 1) * bin_size;
+                }
+
+                line(histImage, Point(bin_w * i, hist_h),
+                    Point(bin_w * i, hist_h - cvRound(bins[i] * hist_h)),
+                    inside ? Scalar(0, 255, 0) : Scalar(0, 0, 255), bin_w / 2, 8, 0);
+            }
+
+            cv::imshow("MotionOnlyBad Error distribution", histImage);
+            cv::waitKey(3);
+        }
+
+        int nGood = 0;
+
+        for (auto& r : results) {
+            //            if (r.chi2 > chi2_thresh) {
+            //                continue;
+            //            }
+            cost += r.chi2;
+            H += r.H;
+            b += r.b;
+            ++nGood;
+        }
+
+        cost /= nGood;
 
         //        H += Sigma_inv;
         //        b += Sigma_inv * (last_tangent - T21.log());
@@ -1836,7 +2047,7 @@ void Viso::MotionOnlyBA(Sophus::SE3d& T21, std::vector<AlignmentPair>& alignment
 
     assert(!T21.matrix().hasNaN());
 
-    //    std::cout << "MBA cost from " << initial_cost << " to " << last_cost << " in " << (iter + 1) << " iterations, chi2_min: " << chi2_min << ", chi2_max: " << chi2_max << "\n";
+    std::cout << "MBA cost from " << initial_cost << " to " << last_cost << " in " << (iter + 1) << " iterations, chi2_min: " << chi2_min << ", chi2_max: " << chi2_max << "\n";
 }
 
 void Viso::global_ba()

@@ -44,7 +44,10 @@ private:
     const int vis = Config::get<int>("visualize_tracking");
     const int add_mba = Config::get<int>("do_motion_only_bundle_adjustment");
     const double chi2_thresh = Config::get<double>("chi2_thresh");
-    const int affine_warping = Config::get<int>("affine_warping");
+    const double chi2_thresh_me = Config::get<double>("chi2_thresh_me");
+    const int step_through = Config::get<int>("step_through");
+
+  const int affine_warping = Config::get<int>("affine_warping");
     const int df_on = Config::get<int>("df_on");
 
     M3d K;
@@ -128,19 +131,22 @@ private:
     std::vector<AlignmentPair> TrackFrame(TrackedFrame* tracked_f, Keyframe::Ptr last_frame, Keyframe::Ptr cur_frame);
     void TrackSingle(std::vector<AlignmentPair>& pairs, std::vector<bool>& success, int level);
     bool SolvePnP(Sophus::SE3d& pose, const vector<vector<AlignmentPair>>& alignment_pairs_vec, const vector<vector<bool>>& success_vec);
+    bool SolvePnPSingle(Sophus::SE3d& pose, vector<AlignmentPair>& alignment_pairs);
 
     void LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before, std::vector<V2d>& kp_after, std::vector<int>& tracked_points, std::vector<AlignmentPair>& alignment_pairs);
     void LKAlignmentSingle(std::vector<AlignmentPair>& pairs, std::vector<bool>& success, std::vector<V2d>& kp, int level);
     M2d GetAffineWarpingMatrix(Keyframe::Ptr ref_frame, Keyframe::Ptr cur_frame, V3d Pw, V2d uv_ref);
 
     double GetMotion(Keyframe::Ptr cur_frame);
-    bool IsKeyframe(Keyframe::Ptr keyframe, int nr_tracked_points);
+    double GetMotionEx(Keyframe::Ptr ref_frame, Sophus::SE3d pose);
+
+
+  bool IsKeyframe(Keyframe::Ptr keyframe, int nr_tracked_points);
     double CalculateVariance2(const double& nu, const Sophus::SE3d& T21,
         const std::vector<AlignmentPair>& alignment_pairs);
     double CalculateVariance2Ex(const double& nu, const Sophus::SE3d& T21,
         const std::vector<std::vector<AlignmentPair> >& alignment_pairs_vec);
     double RemoveOutliers(const Sophus::SE3d& T21,
-        std::vector<int>& tracked_points,
         std::vector<AlignmentPair>& alignment_pairs);
     void MotionOnlyBA(Sophus::SE3d& T21, std::vector<AlignmentPair>& alignment_pairs);
     void MotionOnlyBAEx(Sophus::SE3d& T21, const vector<std::vector<AlignmentPair> >& alignment_pairs_vec, const std::vector<std::vector<bool> >& success_vec);

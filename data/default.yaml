@@ -5,7 +5,10 @@
 
 dataset_dir: .
 #dataset_dir: ./data/rgbd_dataset_freiburg3_structure_texture_far
-
+#dataset_dir: /home/sage/Downloads/rgbd_dataset_freiburg1_room #fails initialization
+#dataset_dir: /home/sage/Downloads/rgbd_dataset_freiburg1_desk
+#dataset_dir: /home/sage/Downloads/rgbd_dataset_freiburg1_floor
+#dataset_dir: /home/sage/Downloads/rgbd_dataset_freiburg1_360
 # camera intrinsics
 # fr1
 camera.fx: 517.3
@@ -14,28 +17,38 @@ camera.cx: 318.6
 camera.cy: 255.3
 
 # fr2
+#dataset_dir: /home/sage/Downloads/rgbd_dataset_freiburg2_pioneer_360 #fails initialization
 #camera.fx: 520.9
 #camera.fy: 521.0
 #camera.cx: 325.1
 #camera.cy: 249.7
 
+
 #dataset_dir: /home/sage/Downloads/rgbd_dataset_freiburg3_structure_texture_near
+#dataset_dir: /home/sage/Downloads/rgbd_dataset_freiburg3_sitting_xyz_validation
 # fr3
 #camera.fx: 535.4
 #camera.fy: 539.2
 #camera.cx: 320.1
 #camera.cy: 247.6
 
+#dataset_dir: /home/sage/Downloads/mav0/cam0/data
+#camera.fx: 457.587
+#camera.fy: 456.134
+#camera.cx: 379.999
+#camera.cy: 255.238
+
+
 # VO Parameters
 visualize_tracking: 1 #1/0
 number_of_features: 800
 direct_half_patch_size: 4
-lk_half_patch_size: 8
+lk_half_patch_size: 4
 lk_d2_factor: 0.9
 lk_photometric_thresh: 40
 BA_iteration: 100
 ba_outlier_thresh: 5
-max_feature: 500
+max_featu re: 500
 qualityLevel: 0.1
 minDistance: 10
 grid_size:  10
@@ -47,7 +60,9 @@ affine_warping: 1
 do_bundle_adjustment:  1   #1/0
 do_local_bundle_adjustment: 0   #1/0
 do_motion_only_bundle_adjustment: 1 #1/0
-chi2_thresh: 16.0
+chi2_thresh: 100.0
+chi2_thresh_me: 8.0 #me = motion estimation
+step_through: 0
 add_huber_kernal: 0 #1/0
 set_window: 10
 remove_outlier: 1 #1/0
@@ -58,21 +73,21 @@ gain: 0.000001
 # initialization
 reset_after: 15
 iterations: 10
-half_patch_size: 4
+half_patch_size: 6
 photometric_thresh: 40.0
-min_good_cnt: 100
+min_good_cnt: 150
 disparity_thresh: 25.0
 reprojection_thresh: 0.3
 init_quality_level: 0.01
 
 # new keyframe
 new_kf_dist_thresh: 0.1
-new_kf_angle_thresh: 0.25
+new_kf_angle_thresh: 0.15
 combined_thresh: 0.25
 angle_combined_ratio: 0.4
 
 #depth filter
-df_on: 1
+df_on: 0
 df_window_size: 5
 init_a: 10
 init_b: 10
