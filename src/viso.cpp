@@ -680,7 +680,7 @@ void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before,
         bins[bin] += 1.0 / nGood;
     }
 
-    const int bin_w = 3;
+    const int bin_w = 2;
     const int hist_h = 200;
     Mat histImage(hist_h, num_bins * bin_w, CV_8UC3, Scalar(0, 0, 0));
 
@@ -711,8 +711,34 @@ void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before,
 
         line(histImage, Point(bin_w * i, hist_h),
             Point(bin_w * i, hist_h - cvRound(bins[i] * hist_h)),
-            inside ? Scalar(0, 255, 0) : Scalar(0, 0, 255), bin_w / 2, 8, 0);
+            inside ? Scalar(0, 255, 0) : Scalar(0, 0, 255), bin_w, 4, 0);
     }
+
+    std::string print_string = "";
+    print_string.append("chi2_min: " + std::to_string(chi2_min));
+
+    putText(histImage, print_string, cv::Point(10, 30), 0, 1.0, Scalar(255, 255, 255));
+
+    print_string = "";
+    print_string.append("chi2_max: " + std::to_string(chi2_max));
+
+    putText(histImage, print_string, cv::Point(10, 55), 0, 1.0, Scalar(255, 255, 255));
+
+    print_string = "";
+    print_string.append("0.1-quantile: " + std::to_string(quantil_vl));
+
+    putText(histImage, print_string, cv::Point(400, 30), 0, 1.0, Scalar(255, 255, 255));
+
+    print_string = "";
+    print_string.append("0.9-quantile: " + std::to_string(quantil_vh));
+
+    putText(histImage, print_string, cv::Point(400, 55), 0, 1.0, Scalar(255, 255, 255));
+
+
+//  CV_EXPORTS_W void putText( InputOutputArray img, const String& text, Point org,
+//                             int fontFace, double fontScale, Scalar color,
+//                             int thickness = 1, int lineType = LINE_8,
+//                             bool bottomLeftOrigin = false );
 
     cv::imshow("LkAlignment Error distribution", histImage);
     cv::waitKey(3);
