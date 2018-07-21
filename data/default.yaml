@@ -62,7 +62,7 @@ do_local_bundle_adjustment: 0   #1/0
 do_motion_only_bundle_adjustment: 1 #1/0
 chi2_thresh: 100.0
 chi2_thresh_me: 8.0 #me = motion estimation
-step_through: 0
+step_through: 3
 add_huber_kernal: 0 #1/0
 set_window: 10
 remove_outlier: 1 #1/0

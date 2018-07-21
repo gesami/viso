@@ -45,7 +45,7 @@ private:
     const int add_mba = Config::get<int>("do_motion_only_bundle_adjustment");
     const double chi2_thresh = Config::get<double>("chi2_thresh");
     const double chi2_thresh_me = Config::get<double>("chi2_thresh_me");
-    const int step_through = Config::get<int>("step_through");
+    int step_through = Config::get<int>("step_through");
 
   const int affine_warping = Config::get<int>("affine_warping");
     const int df_on = Config::get<int>("df_on");

@@ -77,225 +77,110 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
     case kRunning: {
         std::lock_guard<std::mutex> lock(update_map_);
 
-        if (better_tracker_.use) {
+        Sophus::SE3d X = Sophus::SE3d(last_frame->GetR(), last_frame->GetT()); //Keyframe pose
+        DirectPoseEstimationMultiLayer(cur_frame, X);
 
-            // Use last frame's keypoints and pose as starting values.
-            cur_frame->SetPose(better_tracker_.last_frame->GetPose());
-            //            auto pose = better_tracker_.last_frame->GetPose();
-            //            DirectPoseEstimationMultiLayer(cur_frame, pose);
-            //            cur_frame->SetPose(pose);
+        cur_frame->SetR(X.rotationMatrix());
+        cur_frame->SetT(X.translation());
 
-            Sophus::SE3d X = Sophus::SE3d(last_frame->GetR(), last_frame->GetT()); //Keyframe pose
-            DirectPoseEstimationMultiLayer(cur_frame, X);
+        std::vector<V2d> kp_before, kp_after;
+        std::vector<int> tracked_points;
+        std::vector<AlignmentPair> alignment_pairs;
+        LKAlignment(cur_frame, kp_before, kp_after, tracked_points, alignment_pairs);
 
-            cur_frame->SetR(X.rotationMatrix());
-            cur_frame->SetT(X.translation());
-
-            if (Track(&better_tracker_, cur_frame) == false) {
-                state_ = kLostTrack;
-                break;
-            }
-
-            k2f = cur_frame->GetPose() * lkf.inverse();
-            //f2f = X*lf.inverse();
-            map_.SetCurrent(cur_frame);
-
-            frame_time.push_back(cur_frame->GetTime());
-            ref_key.push_back(map_.GetKeyid());
-            ref_pose.push_back(k2f);
-
-            // show image
-            cv::Mat display;
-            cv::cvtColor(cur_frame->Mat(), display, CV_GRAY2BGR);
-
-            for (auto& f : better_tracker_.tracked_fs) {
-                for (int i = 0; i < f.kps.size(); ++i) {
-                    auto color = cv::Scalar(0, 255, 0);
-                    if (!f.success[i]) {
-                        color = cv::Scalar(0, 0, 255);
-                    }
-
-                    cv::rectangle(display, cv::Point2f(f.kps[i].pt.x - 4, f.kps[i].pt.y - 4),
-                        cv::Point2f(f.kps[i].pt.x + 4, f.kps[i].pt.y + 4),
-                        color);
-                }
-            }
-
-            cv::imshow("Better tracker", display);
-            cv::waitKey(0);
-
-            if (IsKeyframe(cur_frame, better_tracker_.tracked_fs[0].good_cnt)) {
-
-                map_.AddKeyframe(cur_frame);
-
-                { // Delete unsuccessful keypoints
-                    for (int i = 0; i < better_tracker_.tracked_fs[0].success.size(); ++i) {
-                        if (better_tracker_.tracked_fs[0].success[i]) {
-                            cur_frame->AddKeypoint(
-                                better_tracker_.tracked_fs[0].kps[i],
-                                better_tracker_.tracked_fs[0].ref_frame->MapPoints()[i]);
-                        }
-                    }
-                }
-
-                { // Add observations
-                    auto& kps = cur_frame->Keypoints();
-                    auto& mps = cur_frame->MapPoints();
-
-                    int i = 0;
-                    for (auto& mp : mps) {
-                        mp->AddObservation(cur_frame, i);
-                        ++i;
-                    }
-                }
-
-                better_tracker_.tracked_fs.clear();
-                better_tracker_.tracked_fs.push_back(TrackedFrame{ cur_frame, cur_frame->Keypoints(), std::vector<bool>(cur_frame->Keypoints().size(), true), cur_frame->Keypoints().size() });
-
-                std::vector<cv::KeyPoint> kp;
-                featureDetector->detect(cur_frame->Mat(), kp);
-                vector<V3d> wp = map_.GetPoints3d();
-                cur_frame->SetOccupied(wp);
-                cur_frame->AddNewFeatures(kp);
-
-                if (df_on) {
-                    if (filter != nullptr) {
-                        delete filter;
-                    }
-
-                    filter = new depth_filter(cur_frame);
-                }
-
-                do_ba_ = true;
-                k2f = Sophus::SE3d(M3d::Identity(), V3d::Zero());
-                lkf = cur_frame->GetPose();
-
-            } else if (df_on && filter != nullptr && GetMotion(cur_frame) >= 0.05) {
-                filter->Update(cur_frame);
-                filter->UpdateMap(&map_, cur_frame);
-            }
-
-            better_tracker_.last_frame = cur_frame;
-        } else {
-            Sophus::SE3d X = Sophus::SE3d(last_frame->GetR(), last_frame->GetT()); //Keyframe pose
-            DirectPoseEstimationMultiLayer(cur_frame, X);
-
-            cur_frame->SetR(X.rotationMatrix());
-            cur_frame->SetT(X.translation());
-
-            std::vector<V2d> kp_before, kp_after;
-            std::vector<int> tracked_points;
-            std::vector<AlignmentPair> alignment_pairs;
-            LKAlignment(cur_frame, kp_before, kp_after, tracked_points, alignment_pairs);
-            //
-            //            vector<MapPoint::Ptr> tracked_map_points;
-            //            tracked_map_points.reserve(tracked_points.size());
-            //            for (int i = 0; i < tracked_points.size(); ++i) {
-            //                tracked_map_points.push_back(map_.GetPoints()[i]);
-            //            }
-
-            //            DirectPoseEstimationSingleLayer(0, cur_frame, X, tracked_map_points);
-            //            //
-            //            cur_frame->SetR(X.rotationMatrix());
-            //            cur_frame->SetT(X.translation());
-            //
-            //            kp_before.clear();
-            //            kp_after.clear();
-            //            tracked_points.clear();
-            //            alignment_pairs.clear();
-            //            LKAlignment(cur_frame, kp_before, kp_after, tracked_points, alignment_pairs);
-
-            if (add_mba) {
-                if (tracked_points.size() > 9) {
+        if (add_mba) {
+            if (tracked_points.size() > 9) {
 #if 1
-                    bool ok = SolvePnPSingle(X, alignment_pairs);
+                bool ok = SolvePnPSingle(X, alignment_pairs);
 
-                    if (!ok ) {
-                      std::cout << "SolvePnPSingle not successful\n";
-//                      DirectPoseEstimationMultiLayer(cur_frame, X);
-
-//                      state_ = kLostTrack;
-                      break;
-                    }
+                if (!ok) {
+                    std::cout << "SolvePnPSingle not successful\n";
+                    break;
+                }
 #else
-                    MotionOnlyBA(X, alignment_pairs);
-                    RemoveOutliers(X, alignment_pairs);
-                    //
-                    MotionOnlyBA(X, alignment_pairs);
+                MotionOnlyBA(X, alignment_pairs);
+                RemoveOutliers(X, alignment_pairs);
+                //
+                MotionOnlyBA(X, alignment_pairs);
 #endif
-                    std::cout << "motion: " << GetMotionEx(last_frame, X) << "\n";
+                double motion = GetMotionEx(last_frame, X);
+                std::cout << "motion: " << motion << "\n";
+
+                // Only update, if motion is reasonable.
+                if (motion < 0.1) {
                     cur_frame->SetR(X.rotationMatrix());
                     cur_frame->SetT(X.translation());
                 }
             }
-
-            k2f = cur_frame->GetPose() * lkf.inverse();
-            //f2f = X*lf.inverse();
-            map_.SetCurrent(cur_frame);
-
-            frame_time.push_back(cur_frame->GetTime());
-            ref_key.push_back(map_.GetKeyid());
-            ref_pose.push_back(k2f);
-
-          if(step_through == 1) {
-            cv::waitKey(0);
-          } else {
-            cv::waitKey(10);
-          }
-
-            if (vis) {
-                // show image
-                cv::Mat display;
-                cv::cvtColor(cur_frame->Mat(), display, CV_GRAY2BGR);
-
-                for (int i = 0; i < kp_after.size(); ++i) {
-                    cv::rectangle(display, cv::Point2f(kp_after[i].x() - 4, kp_after[i].y() - 4), cv::Point2f(kp_after[i].x() + 4, kp_after[i].y() + 4),
-                        cv::Scalar(0, 255, 0));
-                }
-
-                cv::imshow("Tracked", display);
-
-
-            }
-
-            if (IsKeyframe(cur_frame, tracked_points.size())) {
-
-                map_.AddKeyframe(cur_frame);
-
-                assert(cur_frame->Keypoints().size() == 0);
-                vector<MapPoint::Ptr> map_points = map_.GetPoints();
-                for (int i = 0; i < tracked_points.size(); ++i) {
-                    cv::KeyPoint kp;
-                    kp.pt.x = kp_after[i].x();
-                    kp.pt.y = kp_after[i].y();
-                    int kp_idx = cur_frame->AddKeypoint(kp, map_points[tracked_points[i]]); // add the keypoints one by one
-                    map_points[tracked_points[i]]->AddObservation(cur_frame, kp_idx); // saved in map: world point coordinate, corresponding frame, position of point kp array
-                }
-
-                std::vector<cv::KeyPoint> kp;
-                featureDetector->detect(cur_frame->Mat(), kp);
-                vector<V3d> wp = map_.GetPoints3d();
-                cur_frame->SetOccupied(wp);
-                cur_frame->AddNewFeatures(kp);
-
-                if (df_on) {
-                    if (filter != nullptr) {
-                        delete filter;
-                    }
-
-                    filter = new depth_filter(cur_frame);
-                }
-
-                do_ba_ = true;
-                k2f = Sophus::SE3d(M3d::Identity(), V3d::Zero());
-                lkf = cur_frame->GetPose();
-            } else if (df_on && filter != nullptr && GetMotion(cur_frame) >= 0.05) {
-                filter->Update(cur_frame);
-                filter->UpdateMap(&map_, cur_frame);
-            }
         }
 
-        //        RemoveOutliers(X, tracked_points, alignment_pairs);
+        k2f = cur_frame->GetPose() * lkf.inverse();
+        //f2f = X*lf.inverse();
+        map_.SetCurrent(cur_frame);
+
+        frame_time.push_back(cur_frame->GetTime());
+        ref_key.push_back(map_.GetKeyid());
+        ref_pose.push_back(k2f);
+
+        if (step_through > 0 || step_through == -1) {
+            --step_through;
+            if(step_through < -1) {
+              step_through = -1;
+            }
+            cv::waitKey(0);
+        } else {
+            cv::waitKey(10);
+        }
+
+        if (vis) {
+            // show image
+            cv::Mat display;
+            cv::cvtColor(cur_frame->Mat(), display, CV_GRAY2BGR);
+
+            for (int i = 0; i < kp_after.size(); ++i) {
+                cv::rectangle(display, cv::Point2f(kp_after[i].x() - 4, kp_after[i].y() - 4), cv::Point2f(kp_after[i].x() + 4, kp_after[i].y() + 4),
+                    cv::Scalar(0, 255, 0));
+            }
+
+            cv::imshow("Tracked", display);
+        }
+
+        if (IsKeyframe(cur_frame, tracked_points.size())) {
+
+            map_.AddKeyframe(cur_frame);
+
+            assert(cur_frame->Keypoints().size() == 0);
+            vector<MapPoint::Ptr> map_points = map_.GetPoints();
+            for (int i = 0; i < tracked_points.size(); ++i) {
+                cv::KeyPoint kp;
+                kp.pt.x = kp_after[i].x();
+                kp.pt.y = kp_after[i].y();
+                int kp_idx = cur_frame->AddKeypoint(kp, map_points[tracked_points[i]]); // add the keypoints one by one
+                map_points[tracked_points[i]]->AddObservation(cur_frame, kp_idx); // saved in map: world point coordinate, corresponding frame, position of point kp array
+            }
+
+            std::vector<cv::KeyPoint> kp;
+            featureDetector->detect(cur_frame->Mat(), kp);
+            vector<V3d> wp = map_.GetPoints3d();
+            cur_frame->SetOccupied(wp);
+            cur_frame->AddNewFeatures(kp);
+
+            if (df_on) {
+                if (filter != nullptr) {
+                    delete filter;
+                }
+
+                filter = new depth_filter(cur_frame);
+            }
+
+            do_ba_ = true;
+            k2f = Sophus::SE3d(M3d::Identity(), V3d::Zero());
+            lkf = cur_frame->GetPose();
+        } else if (df_on && filter != nullptr && GetMotion(cur_frame) >= 0.05) {
+            filter->Update(cur_frame);
+            filter->UpdateMap(&map_, cur_frame);
+        }
+
     } break;
 
     case kLostTrack: {
@@ -472,7 +357,6 @@ void Viso::DirectPoseEstimationSingleLayer(int level,
     struct Result {
         M6d H = M6d::Zero();
         V6d b = V6d::Zero();
-        double error = 0;
         double chi2 = 0;
     };
 
@@ -532,12 +416,12 @@ void Viso::DirectPoseEstimationSingleLayer(int level,
 
             for (int x = -direct_half_patch_size; x < direct_half_patch_size; x++) {
                 for (int y = -direct_half_patch_size; y < direct_half_patch_size; y++) {
-                    result.error = frame->GetPixelValue(u_ref + x, v_ref + y, level) - current_frame->GetPixelValue(u_cur + x, v_cur + y, level);
-                    result.chi2 = result.error * result.error;
+                    double error = frame->GetPixelValue(u_ref + x, v_ref + y, level) - current_frame->GetPixelValue(u_cur + x, v_cur + y, level);
+                    result.chi2 += error * error;
                     V2d J_img_pixel = current_frame->GetGradient(u_cur + x, v_cur + y, level);
                     V6d J = -J_img_pixel.transpose() * J_pixel_xi;
-                    result.H = J * J.transpose();
-                    result.b = -result.error * J;
+                    result.H += J * J.transpose();
+                    result.b += -error * J;
                 }
             }
             results.push_back(result);
@@ -575,7 +459,7 @@ void Viso::DirectPoseEstimationSingleLayer(int level,
             double bin_size = (max_chi2 - min_chi2) / num_bins;
 
             for (const auto& r : results) {
-                int bin = std::min(std::max((int)((r.error * r.error - min_chi2) / bin_size), 0), (num_bins - 1));
+                int bin = std::min(std::max((int)((r.chi2 - min_chi2) / bin_size), 0), (num_bins - 1));
 
                 if (!(bin >= 0 && bin < num_bins)) {
                     std::cerr << "bin: " << bin << "\n";
@@ -607,12 +491,12 @@ void Viso::DirectPoseEstimationSingleLayer(int level,
 
         nGood = 0;
         for (const auto& r : results) {
-//            if (r.chi2 > quantil_val) {
-//                continue;
-//            }
+            //            if (r.chi2 > quantil_val) {
+            //                continue;
+            //            }
             ++nGood;
 
-//            double delta = mean_chi2 - r.chi2;
+            //            double delta = mean_chi2 - r.chi2;
             double w = 1 - (r.chi2 - min_chi2) / (max_chi2 - min_chi2); //delta * delta / var_chi2;
             cost += r.chi2;
             H += w * r.H;
@@ -751,8 +635,8 @@ void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before,
         V2d error = alignment_pairs[i].uv_cur - alignment_pairs[i].cur_frame->Project(alignment_pairs[i].point3d, 0);
         chi2[i] = error.transpose() * error;
 
-        if(chi2[i] > chi2_thresh) {
-          success[i] = false;
+        if (chi2[i] > chi2_thresh) {
+            success[i] = false;
         }
     }
 
@@ -815,7 +699,7 @@ void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before,
 
         bool inside_l = quantil_pl <= p;
         if (!inside_l) {
-          quantil_vl = chi2_min + (i + 1) * bin_size;
+            quantil_vl = chi2_min + (i + 1) * bin_size;
         }
 
         bool inside = inside_h && inside_l;
@@ -835,12 +719,12 @@ void Viso::LKAlignment(Keyframe::Ptr current_frame, std::vector<V2d>& kp_before,
 
     double thresh_u = chi2_mean + chi2_thresh_me;
     double thresh_l = chi2_mean - chi2_thresh_me;
-//    //    if (quantil_v > chi2_thresh) {
-//    //        thresh = std::numeric_limits<double>::min();
-//    //    }
-//
-//    const double thresh = chi2_min + chi2_thresh;
-//
+    //    //    if (quantil_v > chi2_thresh) {
+    //    //        thresh = std::numeric_limits<double>::min();
+    //    //    }
+    //
+    //    const double thresh = chi2_min + chi2_thresh;
+    //
     for (int i = 0; i < chi2.size(); ++i) {
         if (!success[i]) {
             continue;
@@ -1710,21 +1594,20 @@ double Viso::GetMotion(Keyframe::Ptr cur_frame)
     return (distance + angle_combined_ratio * angle);
 }
 
-double Viso::GetMotionEx(Keyframe::Ptr ref_frame, Sophus::SE3d pose){
-  V3d last_T = ref_frame->GetPose().translation();
-  V3d cur_T = pose.translation();
-  V3d delta_T = (cur_T - last_T);
-  double distance = delta_T.norm();
+double Viso::GetMotionEx(Keyframe::Ptr ref_frame, Sophus::SE3d pose)
+{
+    V3d last_T = ref_frame->GetPose().translation();
+    V3d cur_T = pose.translation();
+    V3d delta_T = (cur_T - last_T);
+    double distance = delta_T.norm();
 
-  M3d last_R = ref_frame->GetPose().rotationMatrix();
-  M3d cur_R = pose.rotationMatrix();
-  M3d delta_R = cur_R.transpose() * last_R;
-  double angle = std::abs(std::acos((delta_R(0, 0) + delta_R(1, 1) + delta_R(2, 2) - 1) * 0.5));
+    M3d last_R = ref_frame->GetPose().rotationMatrix();
+    M3d cur_R = pose.rotationMatrix();
+    M3d delta_R = cur_R.transpose() * last_R;
+    double angle = std::abs(std::acos((delta_R(0, 0) + delta_R(1, 1) + delta_R(2, 2) - 1) * 0.5));
 
-  return (distance + angle_combined_ratio * angle);
-
+    return (distance + angle_combined_ratio * angle);
 }
-
 
 double Viso::CalculateVariance2(const double& nu, const Sophus::SE3d& T21,
     const std::vector<AlignmentPair>& alignment_pairs)
