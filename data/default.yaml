@@ -2,9 +2,11 @@
 # data
 # the tum dataset directory, change it to yours!
 
-dataset_dir: /home/wpy/code/rgbd_dataset_freiburg3_long_office_household/
+#dataset_dir: /home/wpy/code/rgbd4/
 #dataset_dir: /home/wpy/code/rgbd3/
 #dataset_dir: ./data/rgbd_dataset_freiburg3_structure_texture_far
+dataset_dir: /home/wpy/code/cam2/
+
 
 # camera intrinsics
 # fr1
@@ -21,23 +23,35 @@ dataset_dir: /home/wpy/code/rgbd_dataset_freiburg3_long_office_household/
 
 #dataset_dir: /home/sage/Downloads/rgbd_dataset_freiburg3_structure_texture_near
 # fr3
-camera.fx: 535.4
-camera.fy: 539.2
-camera.cx: 320.1
-camera.cy: 247.6
+#camera.fx: 535.4
+#camera.fy: 539.2
+#camera.cx: 320.1
+#camera.cy: 247.6
+
+# fr4
+#camera.fx: 481.20
+#camera.fy: 480.00
+#camera.cx: 319.50
+#camera.cy: 239.50
+
+# euroc
+camera.fx: 458.654
+camera.fy: 457.296
+camera.cx: 367.215
+camera.cy: 248.375
 
 # VO Parameters
 visualize_tracking: 1 #1/0
-number_of_features: 800
+number_of_features: 400
 lk_half_patch_size: 4
 lk_d2_factor: 0.9
 lk_photometric_thresh: 40
 BA_iteration: 100
 ba_outlier_thresh: 5
-max_feature: 500
+max_feature: 400
 qualityLevel: 0.01
 minDistance: 10
-grid_size:  10
+grid_size:  5
 better_tracker: 0
 affine_warping: 1
 
@@ -74,6 +88,9 @@ df_on: 1
 df_window_size: 5
 init_a: 10
 init_b: 10
-image_width: 640
+#image_width: 640
+#image_height: 480
+image_width: 752
 image_height: 480
+df_max_kf: 10
 

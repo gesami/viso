@@ -18,25 +18,25 @@
 #include "types.h"
 #include <common.h>
 #include <config.h>
+#include <mutex>
 
 using namespace cv;
 using namespace Eigen;
 using namespace Sophus;
 using namespace std;
 
+
 class depth_filter {
     // parameters
-    const int boarder = 20; // boarder length
-    // const int width = 640; // width
-    //const int height = 480; // height
-    const int ncc_window_size = 10; // NCC half window size
-    const int ncc_area = (2 * ncc_window_size + 1) * (2 * ncc_window_size + 1); // NCC window area
+    int boarder = 20; // boarder length
+    int ncc_window_size = 10; // NCC half window size
+    int ncc_area = (2 * ncc_window_size + 1) * (2 * ncc_window_size + 1); // NCC window area
     // const double min_cov = 0.1; // convergence determination: minimum variance
-    const double max_cov = 10; // divergence determination: maximum variance
-    double z_range = 5;        // the value 1/minimum_depth  assume it now to be 5
-    double init_depth = 1;     // initial depth
-    double init_cov2 = 5;       //  initial covariance
-    double min_cov = z_range/200.0;     //  as shown in svo paper
+    double max_cov ; // divergence determination: maximum variance original 10
+    double z_range;        // the value 1/minimum_depth  assume it now to be 5
+    double init_depth ;     // initial depth
+    double init_cov2 ;       //  initial covariance original 5
+    double min_cov ;     //  as shown in svo paper
     
     double photometric_thresh = Config::get<double>("photometric_thresh"); 
     double width = Config::get<double>("image_width");
@@ -45,7 +45,7 @@ class depth_filter {
     double init_b = Config::get<double>("init_b");
     int df_window_size = Config::get<int>("df_window_size");
     double photo_area = (double) (2 * df_window_size + 1) * (2 * df_window_size + 1); 
-    const double reprojection_thresh_ = Config::get<double>("reprojection_thresh");
+    double reprojection_thresh_ = Config::get<double>("reprojection_thresh");
     
     
     // intrinstic parameter for rgb dataset
@@ -63,15 +63,20 @@ private:
 	std::vector<double> beta_b;
     std::vector<int> status_;         // status to indicate if the points are converging or converged or already updated
     int current_iteration_;
-
     Keyframe::Ptr cur_frame_;
 
 public:
     
     // class initialization
-    depth_filter(Keyframe::Ptr ref_frame)
+    // z_range/100  */36
+    depth_filter(Keyframe::Ptr ref_frame, double cur_depth_mean, double cur_depth_min)
         : ref_frame_(ref_frame)
         , kp_(ref_frame_->GetKeypointsDF())
+        , init_depth(cur_depth_mean)
+        , z_range(1.0/cur_depth_min)
+        , min_cov(z_range/100.0)
+        , init_cov2(z_range*z_range/36)
+        , max_cov(2*init_cov2)
     {
         M3d K = ref_frame_->GetK();
         fx = K(0, 0); // focal length x
@@ -94,6 +99,10 @@ public:
             status_[i] = 0;
         }
         current_iteration_ = 0;
+    }
+    
+    virtual ~depth_filter(){
+        // delete m;
     }
 
     // Updating the converged points
@@ -126,8 +135,8 @@ public:
                 }
                 //cout << " bad observation number " << bad_observation << endl;
                 if( bad_observation > 0){
-                    status_[i] = 0;
-                    continue;
+                    // status_[i] = 0;
+                    // continue;
                 }
 
                 // update map points 
@@ -145,11 +154,9 @@ public:
         }
     }
     
-    void Update(Keyframe::Ptr cur_frame)
+    void Update(viso::Map* map, Keyframe::Ptr cur_frame)
     {
-
         cur_frame_ = cur_frame;
-
         SE3d pose_curr_TWC = cur_frame->GetPose();
         SE3d pose_T_C_R = pose_curr_TWC * ref_frame_->GetPose().inverse(); // change world coordinate： T_C_W * T_W_R = T_C_R
         // plot the search process for each point
@@ -162,8 +169,46 @@ public:
             // set last parameter to one to show polar line search process
             status_[i] = update(ref_frame_->Mat(), cur_frame->Mat(), pose_T_C_R, depths_[i], depths_cov_[i], beta_a[i], beta_b[i], x, y, false);
         }
+        UpdateMap(map, cur_frame);
     }
 
+    // TODO get mean value
+    double GetMeanDepth(){
+        double  mean_depth = 0;
+        int number = 0;
+        for(int i=0; i<depths_.size(); i++){
+            if(status_[i]==2){
+                mean_depth += 1.0/depths_[i];
+                number++;
+            }
+        }
+        if(number>=5){
+            mean_depth = mean_depth/number;
+            return mean_depth;
+        }else{
+            return -1;
+        }
+    }
+    
+    // TODO get min value
+    double GetMinDepth(){
+        double min_depth = 500;
+        int number = 0;
+        for(int i=0; i<depths_.size(); i++){
+            if(status_[i]==2){
+                if(min_depth > 1.0/depths_[i])
+                    min_depth = 1.0/depths_[i];
+                number++;
+            }
+        }
+        if(number>=5){
+            return min_depth;
+        }else{
+            return -1;
+        }
+    }
+    
+    
 private:
     // bilinear grayscale interpolation
     inline double getBilinearInterpolatedValue(const Mat& img, const Vector2d& pt)
@@ -296,7 +341,7 @@ private:
                 best_px_curr = px_curr;
             }
         }
-        if (best_ncc < 0.95f) // only choose large ncc values
+        if (best_ncc < 0.85f) // only choose large ncc values
             return false;
         pt_curr = best_px_curr;
         return true;

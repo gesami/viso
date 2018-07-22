@@ -2,8 +2,8 @@
 #include "common.h"
 #include "timer.h"
 
+
 #include <Eigen/Geometry>
-#include <depth_filter.h>
 #include <map>
 #include <opencv2/core/eigen.hpp>
 
@@ -15,7 +15,8 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
 
     // set intrinstic parameters
     cur_frame->SetK(K);
-
+    ctpl::thread_pool tp(df_max_kf);
+    
     switch (state_) {
     case kInitialization: {
         // if not yet initialized
@@ -81,7 +82,7 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
 
     // if already initialized
     case kRunning: {
-        std::lock_guard<std::mutex> lock(update_map_);
+        // std::lock_guard<std::mutex> lock(update_map_);
         // modified tracking
         if (better_tracker_.use) {
 
@@ -165,7 +166,7 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
                         delete filter;
                     }
 
-                    filter = new depth_filter(cur_frame);
+                    // filter = new depth_filter(cur_frame);
                 }
 
                 do_ba_ = true;
@@ -173,8 +174,8 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
                 lkf = cur_frame->GetPose();
 
             } else if (df_on && filter != nullptr && GetMotion(cur_frame) >= 0.05) {
-                filter->Update(cur_frame);
-                filter->UpdateMap(&map_, cur_frame);
+                // filter->Update(cur_frame);
+                // filter->UpdateMap(&map_, cur_frame);
             }
 
             better_tracker_.last_frame = cur_frame;
@@ -244,24 +245,41 @@ void Viso::OnNewFrame(Keyframe::Ptr cur_frame)
                 vector<V3d> wp = map_.GetPoints3d();
                 cur_frame->SetOccupied(wp);
                 cur_frame->AddNewFeatures(kp);
-
+                // update the current mean depth and min depth
                 if (df_on) {
-                    if (filter != nullptr) {
-                        delete filter;
+                    // TODO push depth filter to the queue and first set the queue size to 5
+                    int sz = df_queue_.size();
+                    if( sz>0 ){
+                        double md = df_queue_.at(sz-1).GetMeanDepth();
+                        if( md != -1)
+                           cur_depth_mean = md;
+                        double mind = df_queue_.at(sz-1).GetMinDepth();
+                        if( mind != -1 )
+                           cur_depth_min = mind;
                     }
-
-                    filter = new depth_filter(cur_frame);
+                    if( sz>=0 && sz<df_max_kf){
+                        df_queue_.push_back(depth_filter(cur_frame, cur_depth_mean, cur_depth_min));
+                    }else{
+                        df_queue_.pop_front();
+                        df_queue_.push_back(depth_filter(cur_frame, cur_depth_mean, cur_depth_min));
+                    }
                 }
-
                 do_ba_ = true;
                 k2f = Sophus::SE3d(M3d::Identity(), V3d::Zero());
                 lkf = cur_frame->GetPose();
-            } else if (df_on && filter != nullptr && GetMotion(cur_frame) >= 0.05) {
-                filter->Update(cur_frame);
-                filter->UpdateMap(&map_, cur_frame);
+            }  else{
+                // TODO update all the depth filter in the queue
+                if(df_queue_.size() > 0){
+                    std::vector<std::thread> td_queue_;
+                    for(int i=0; i<df_queue_.size();i++){
+                        std::lock_guard<std::mutex> lock(update_map_);
+                        auto func = std::bind(&depth_filter::Update, &df_queue_.at(i), &map_, cur_frame);
+                        tp.push(func);
+                    }
+                    tp.stop(1);
+                }
             }
         }
-
     } break;
 
     case kLostTrack: {

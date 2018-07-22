@@ -13,6 +13,8 @@
 #include <sophus/se3.hpp>
 #include <thread>
 #include <tuple>
+#include <depth_filter.h>
+#include "ctpl_stl.h"
 
 class Viso : public FrameSequence::FrameHandler {
 private:
@@ -45,6 +47,8 @@ private:
     const double chi2_thresh = Config::get<double>("chi2_thresh");
     const int affine_warping = Config::get<int>("affine_warping");
     const int df_on = Config::get<int>("df_on");
+    const int df_max_kf = Config::get<int>("df_max_kf");
+    //ctpl::thread_pool p;
 
     M3d K;
 
@@ -56,6 +60,8 @@ private:
     Sophus::SE3d f2f; //last frame-to-frame motion
     Sophus::SE3d lf; //last frame motion
     Sophus::SE3d lkf; //last keyframe motion
+    double cur_depth_mean;
+    double cur_depth_min;
 
     cv::Ptr<cv::GFTTDetector> featureDetector = cv::GFTTDetector::create(max_feature, qualityLevel, minDistance);
 
@@ -68,6 +74,8 @@ public:
         K << fx, 0, cx, 0, fy, cy, 0, 0, 1;
         state_ = kInitialization;
         running = true;
+        cur_depth_mean = 1;
+        cur_depth_min = 0.2;
     }
 
     std::atomic<bool> running;
@@ -79,6 +87,7 @@ public:
     std::vector<std::string> frame_time;
     std::vector<int> ref_key;
     std::vector<Sophus::SE3d> ref_pose;
+    std::deque<depth_filter> df_queue_;
 
     Keyframe::Ptr last_frame;
 
